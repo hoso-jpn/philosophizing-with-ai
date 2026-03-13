@@ -1,0 +1,61 @@
+---
+import { getPosts, getPostPage } from '../../lib/notion';
+import { marked } from 'marked'; // インストールしたライブラリを読み込む
+import BaseHead from '../../components/BaseHead.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((post: any) => ({
+    params: { id: post.id },
+    props: { post },
+  }));
+}
+
+const { id } = Astro.params;
+const { post } = Astro.props;
+const pageData = await getPostPage(id);
+
+// 「Content」列のMarkdownテキストを取得
+const contentProperty = pageData.properties.Content?.rich_text || [];
+const markdownContent = contentProperty.map((t: any) => t.plain_text).join('');
+
+// MarkdownをHTML文字列に変換
+const htmlContent = marked(markdownContent);
+
+const title = post.properties.名前?.title[0]?.plain_text || "無題";
+---
+
+<html lang="ja">
+  <head>
+    <BaseHead title={title} description="" />
+    <style is:global>
+      main { width: 100%; max-width: 720px; margin: 0 auto; padding: 1em; }
+      .notion-content { line-height: 1.8; margin-top: 2rem; }
+      
+      /* Markdown用のスタイル設定 */
+      .notion-content h1, .notion-content h2, .notion-content h3 { margin-top: 2rem; margin-bottom: 1rem; }
+      .notion-content p { margin-bottom: 1.5rem; }
+      .notion-content ul, .notion-content ol { margin-bottom: 1.5rem; padding-left: 2rem; }
+      .notion-content blockquote { 
+        border-left: 4px solid #0070f3; 
+        padding: 0.5rem 1rem; 
+        background: #f0f7ff; 
+        margin: 1.5rem 0;
+      }
+      .notion-content code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <Header />
+    <main>
+      <article>
+        <h1>{title}</h1>
+        <hr />
+        <div class="notion-content" set:html={htmlContent}></div>
+      </article>
+    </main>
+    <Footer />
+  </body>
+</html>

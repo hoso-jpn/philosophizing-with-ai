@@ -1,0 +1,69 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import { getPosts } from '../lib/notion';
+
+const posts = await getPosts();
+---
+
+<!doctype html>
+<html lang="ja">
+	<head>
+		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+	</head>
+	<body>
+		<Header />
+		<main>
+			<section>
+				<h1>Philosophizing with AI</h1>
+				<p>Notion Blog Project</p>
+				<hr />
+				
+				{posts.length > 0 ? (
+					<ul style="padding: 0;">
+						{posts.map((post: any) => {
+							// 1. タイトルの取得
+							const titleProperty = post.properties.名前?.title || [];
+							const titleText = titleProperty.length > 0 ? titleProperty[0].plain_text : "無題の記事";
+
+							// 2. 「Date」列から公開日を取得
+							const publishDate = post.properties.Date?.date?.start;
+							
+							// 3. 日付をフォーマット（例：2026年3月13日）
+							const formattedDate = publishDate 
+								? new Date(publishDate).toLocaleDateString('ja-JP', {
+										year: 'numeric',
+										month: 'long',
+										day: 'numeric'
+									})
+								: "公開日未設定";
+
+							return (
+								<li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid #f4f4f4; padding-bottom: 1rem;">
+									<article>
+										{/* 公開日の表示 */}
+										<div style="font-size: 0.9rem; color: #888; margin-bottom: 0.2rem;">
+											<time datetime={publishDate}>{formattedDate}</time>
+										</div>
+										
+										{/* タイトルとリンク */}
+										<a href={`/posts/${post.id}`} style="text-decoration: none;">
+											<h2 style="margin: 0; font-size: 1.4rem; color: #0070f3; cursor: pointer;">
+												{titleText}
+											</h2>
+										</a>
+									</article>
+								</li>
+							);
+						})}
+					</ul>
+				) : (
+					<p>記事が見つかりませんでした。</p>
+				)}
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
