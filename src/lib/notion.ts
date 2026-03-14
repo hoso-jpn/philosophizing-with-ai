@@ -22,18 +22,17 @@ export async function getPosts() {
     });
 
     if (!response.ok) return [];
-
     const data = await response.json();
 
-    // 修正ポイント：mapを整理し、二重ループを解消
     return data.results.map((page: any) => {
       const props = page.properties || {};
       
       return {
         id: page.id,
-        // 「名前」という日本語キーを使わず、Title か Name を安全に取得
-        title: props.Title?.title?.[0]?.plain_text || 
-               props.Name?.title?.[0]?.plain_text || "無題",
+        // Title列(rich_text)か名前列(title)のどちらかから取得
+        title: props.Title?.rich_text?.[0]?.plain_text || 
+               props.名前?.title?.[0]?.plain_text || 
+               "無題",
         slug: props.Slug?.rich_text?.[0]?.plain_text || "",
         date: props.Date?.date?.start || "",
         description: props.Description?.rich_text?.[0]?.plain_text || "",
@@ -47,7 +46,6 @@ export async function getPosts() {
   }
 }
 
-// getPostContent はそのままでOK
 export async function getPostContent(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
   try {
@@ -62,7 +60,6 @@ export async function getPostContent(pageId: string) {
     const data = await response.json();
     return data.results;
   } catch (error) {
-    console.error("本文取得エラー:", error);
     return [];
   }
 }
@@ -83,8 +80,10 @@ export async function getPostPage(pageId: string) {
     return {
       ...page,
       data: {
-        // 修正ポイント：ここからも「名前」を排除
-        title: props.Title?.title?.[0]?.plain_text || props.Name?.title?.[0]?.plain_text || "無題",
+        // 詳細ページ用も Title(rich_text) または 名前(title) を見るように修正
+        title: props.Title?.rich_text?.[0]?.plain_text || 
+               props.名前?.title?.[0]?.plain_text || 
+               "無題",
         pubDate: props.Date?.date?.start ? new Date(props.Date.date.start) : new Date(),
         description: props.Description?.rich_text?.[0]?.plain_text || "",
         tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
