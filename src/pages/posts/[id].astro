@@ -15,21 +15,21 @@ export async function getStaticPaths() {
 
 const { id } = Astro.params;
 const { post } = Astro.props;
+
+// 詳細データを取得
 const pageData = await getPostPage(id);
 
-// --- 修正ポイント：安全なデータ取得 ---
-const props = pageData?.properties || {};
-
-// 「Content」列のMarkdownテキストを取得（?. を追加してエラーを防止）
-const contentProperty = props.Content?.rich_text || [];
-const markdownContent = contentProperty.map((t: any) => t.plain_text).join('');
+// --- 徹底した安全策 ---
+// 1. 本文の取得 (pageData?.properties?.Content が無い場合も想定)
+const contentRichText = pageData?.properties?.Content?.rich_text || [];
+const markdownContent = contentRichText.map((t: any) => t.plain_text).join('') || "本文がありません。";
 const htmlContent = marked(markdownContent);
 
-// タイトルの取得（post側からも安全に取得）
-const title = post.title || props["名前"]?.title?.[0]?.plain_text || props["Title"]?.title?.[0]?.plain_text || "無題";
+// 2. タイトルの取得 (notion.tsで整形済みの post.title を優先)
+const title = post?.title || pageData?.data?.title || "無題";
 
-// タグの取得を追加
-const tags = post.tags || props.Tags?.multi_select?.map((t: any) => t.name) || [];
+// 3. タグの取得 (notion.tsで整形済みの post.tags を優先)
+const tags = post?.tags || pageData?.data?.tags || [];
 ---
 
 <html lang="ja">
@@ -40,18 +40,6 @@ const tags = post.tags || props.Tags?.multi_select?.map((t: any) => t.name) || [
       .notion-content { line-height: 1.8; margin-top: 2rem; }
       .tags-container { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
       .tag-badge { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: #666; }
-      
-      /* Markdown用のスタイル設定 */
-      .notion-content h1, .notion-content h2, .notion-content h3 { margin-top: 2rem; margin-bottom: 1rem; }
-      .notion-content p { margin-bottom: 1.5rem; }
-      .notion-content ul, .notion-content ol { margin-bottom: 1.5rem; padding-left: 2rem; }
-      .notion-content blockquote { 
-        border-left: 4px solid #0070f3; 
-        padding: 0.5rem 1rem; 
-        background: #f0f7ff; 
-        margin: 1.5rem 0;
-      }
-      .notion-content code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 4px; }
     </style>
   </head>
   <body>
@@ -60,7 +48,6 @@ const tags = post.tags || props.Tags?.multi_select?.map((t: any) => t.name) || [
       <article>
         <h1>{title}</h1>
         
-        {/* タグの表示を追加 */}
         {tags.length > 0 && (
           <div class="tags-container">
             {tags.map((tag: string) => (
