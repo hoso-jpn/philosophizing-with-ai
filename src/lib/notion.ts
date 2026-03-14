@@ -31,17 +31,18 @@ export async function getPosts() {
 
     // --- ここから：扱いやすいようにデータを整理（整形）して返す ---
     return data.results.map((page: any) => {
-      return {
-        id: page.id,
-        title: page.properties.Title?.title[0]?.plain_text || "無題",
-        slug: page.properties.Slug?.rich_text[0]?.plain_text || "",
-        date: page.properties.Date?.date?.start || "",
-        description: page.properties.Description?.rich_text[0]?.plain_text || "",
-        // Tagsを取得し、文字列の配列（ ["AI", "哲学"] のような形）に変換
-        tags: page.properties.Tags?.multi_select.map((tag: any) => tag.name) || [],
-        heroImage: page.properties.HeroImage?.url || null, // もしあれば
-      };
-    });
+  return {
+    id: page.id,
+    // ?. を使うことで、もし空っぽでもエラーにならずに進めます
+    title: page.properties.Title?.title?.[0]?.plain_text || "無題",
+    slug: page.properties.Slug?.rich_text?.[0]?.plain_text || "",
+    date: page.properties.Date?.date?.start || "",
+    description: page.properties.Description?.rich_text?.[0]?.plain_text || "",
+    // Tagsの取得も安全な形に
+    tags: page.properties.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+    heroImage: page.properties.HeroImage?.url || null,
+  };
+});
   } catch (error) {
     console.error("通信エラー:", error);
     return [];
