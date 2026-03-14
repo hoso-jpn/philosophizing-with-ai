@@ -1,6 +1,6 @@
 ---
 import { getPosts, getPostPage } from '../../lib/notion';
-import { marked } from 'marked'; // インストールしたライブラリを読み込む
+import { marked } from 'marked'; 
 import BaseHead from '../../components/BaseHead.astro';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
@@ -17,14 +17,19 @@ const { id } = Astro.params;
 const { post } = Astro.props;
 const pageData = await getPostPage(id);
 
-// 「Content」列のMarkdownテキストを取得
-const contentProperty = pageData.properties.Content?.rich_text || [];
-const markdownContent = contentProperty.map((t: any) => t.plain_text).join('');
+// --- 修正ポイント：安全なデータ取得 ---
+const props = pageData?.properties || {};
 
-// MarkdownをHTML文字列に変換
+// 「Content」列のMarkdownテキストを取得（?. を追加してエラーを防止）
+const contentProperty = props.Content?.rich_text || [];
+const markdownContent = contentProperty.map((t: any) => t.plain_text).join('');
 const htmlContent = marked(markdownContent);
 
-const title = post.properties.名前?.title[0]?.plain_text || "無題";
+// タイトルの取得（post側からも安全に取得）
+const title = post.title || props["名前"]?.title?.[0]?.plain_text || props["Title"]?.title?.[0]?.plain_text || "無題";
+
+// タグの取得を追加
+const tags = post.tags || props.Tags?.multi_select?.map((t: any) => t.name) || [];
 ---
 
 <html lang="ja">
@@ -33,6 +38,8 @@ const title = post.properties.名前?.title[0]?.plain_text || "無題";
     <style is:global>
       main { width: 100%; max-width: 720px; margin: 0 auto; padding: 1em; }
       .notion-content { line-height: 1.8; margin-top: 2rem; }
+      .tags-container { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+      .tag-badge { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: #666; }
       
       /* Markdown用のスタイル設定 */
       .notion-content h1, .notion-content h2, .notion-content h3 { margin-top: 2rem; margin-bottom: 1rem; }
@@ -52,6 +59,16 @@ const title = post.properties.名前?.title[0]?.plain_text || "無題";
     <main>
       <article>
         <h1>{title}</h1>
+        
+        {/* タグの表示を追加 */}
+        {tags.length > 0 && (
+          <div class="tags-container">
+            {tags.map((tag: string) => (
+              <span class="tag-badge">#{tag}</span>
+            ))}
+          </div>
+        )}
+
         <hr />
         <div class="notion-content" set:html={htmlContent}></div>
       </article>

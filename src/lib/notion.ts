@@ -29,18 +29,21 @@ export async function getPosts() {
       // 安全にプロパティを取得するための補助変数
       const props = page.properties;
       
-      return {
-        id: page.id,
-        // Notionの列名が「名前」か「Title」のどちらかにある方を採用
-        title: (props.名前 || props.Title)?.title?.[0]?.plain_text || "無題",
-        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
-        date: props.Date?.date?.start || "",
-        description: props.Description?.rich_text?.[0]?.plain_text || "",
-        // Notion側の列名が「Tags」でも、プログラム内では小文字の「tags」として書き出す
-        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
-        heroImage: props.HeroImage?.url || props.Cover?.url || null,
-      };
-    });
+      return data.results.map((page: any) => {
+  const props = page.properties || {}; // properties 自体がなくても空の箱を用意
+  
+  return {
+    id: page.id,
+    // 「名前」がダメなら「Title」、それもダメなら「無題」にする
+    title: props["名前"]?.title?.[0]?.plain_text || props["Title"]?.title?.[0]?.plain_text || "無題",
+    slug: props.Slug?.rich_text?.[0]?.plain_text || "",
+    date: props.Date?.date?.start || "",
+    description: props.Description?.rich_text?.[0]?.plain_text || "",
+    // Tags も同様に保護
+    tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+    heroImage: props.HeroImage?.url || null,
+  };
+});
   } catch (error) {
     console.error("通信エラー:", error);
     return [];
