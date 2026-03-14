@@ -11,19 +11,12 @@ export async function getPosts() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        // 公開設定になっているものだけ取得
         filter: {
           property: "Published",
-          checkbox: {
-            equals: true,
-          },
+          checkbox: { equals: true },
         },
-        // 日付順に並べ替え
         sorts: [
-          {
-            property: "Date",
-            direction: "ascending",
-          },
+          { property: "Date", direction: "ascending" },
         ],
       }),
     });
@@ -35,17 +28,29 @@ export async function getPosts() {
     }
 
     const data = await response.json();
-    return data.results;
+
+    // --- ここから：扱いやすいようにデータを整理（整形）して返す ---
+    return data.results.map((page: any) => {
+      return {
+        id: page.id,
+        title: page.properties.Title?.title[0]?.plain_text || "無題",
+        slug: page.properties.Slug?.rich_text[0]?.plain_text || "",
+        date: page.properties.Date?.date?.start || "",
+        description: page.properties.Description?.rich_text[0]?.plain_text || "",
+        // Tagsを取得し、文字列の配列（ ["AI", "哲学"] のような形）に変換
+        tags: page.properties.Tags?.multi_select.map((tag: any) => tag.name) || [],
+        heroImage: page.properties.HeroImage?.url || null, // もしあれば
+      };
+    });
   } catch (error) {
     console.error("通信エラー:", error);
     return [];
   }
 }
+
 export async function getPostContent(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
-
   try {
-    // ページの本文（ブロック）を取得
     const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
       method: 'GET',
       headers: {
@@ -53,7 +58,6 @@ export async function getPostContent(pageId: string) {
         'Notion-Version': '2022-06-28',
       },
     });
-
     if (!response.ok) return [];
     const data = await response.json();
     return data.results;
@@ -62,7 +66,7 @@ export async function getPostContent(pageId: string) {
     return [];
   }
 }
-// ページ（行）の詳細情報を取得する関数
+
 export async function getPostPage(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
   try {
@@ -73,7 +77,19 @@ export async function getPostPage(pageId: string) {
         'Notion-Version': '2022-06-28',
       },
     });
-    return await response.json();
+    const page = await response.json();
+    
+    // 詳細ページ用にもデータを整形
+    return {
+      ...page,
+      data: {
+        title: page.properties.Title?.title[0]?.plain_text,
+        pubDate: new Date(page.properties.Date?.date?.start),
+        description: page.properties.Description?.rich_text[0]?.plain_text,
+        tags: page.properties.Tags?.multi_select.map((tag: any) => tag.name) || [],
+        heroImage: page.properties.HeroImage?.url || null,
+      }
+    };
   } catch (error) {
     return null;
   }
