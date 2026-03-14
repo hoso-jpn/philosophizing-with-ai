@@ -8,96 +8,107 @@ import Header from '../components/Header.astro';
 
 type Props = CollectionEntry<'blog'>['data'];
 
-const { title, description, pubDate, updatedDate, heroImage, Tags } = Astro.props as any;
+// 修正ポイント：tags (小文字) に統一
+const { title, description, pubDate, updatedDate, heroImage, tags } = Astro.props as any;
 ---
 
 <html lang="ja">
-	<head>
-		<BaseHead title={title} description={description} />
-		<style>
-			main {
-				width: calc(100% - 2em);
-				max-width: 100%;
-				margin: 0;
-			}
-			/* 修正：画像がない場合は枠を表示させない強力な命令 */
-			.hero-image {
-				width: 100%;
-				display: block;
-			}
-			/* 画像がない(heroImageが未定義)時にこのクラスを非表示にする設定 */
-			.hide-hero {
-				display: none !important;
-			}
+    <head>
+        <BaseHead title={title} description={description} />
+        <style>
+            main {
+                width: calc(100% - 2em);
+                max-width: 100%;
+                margin: 0;
+            }
+            .hero-image {
+                width: 100%;
+                display: block;
+            }
+            .hide-hero {
+                display: none !important;
+            }
+            .hero-image img {
+                display: block;
+                margin: 0 auto;
+                border-radius: 12px;
+                box-shadow: var(--box-shadow);
+                margin-bottom: 2em;
+            }
+            .prose {
+                width: 720px;
+                max-width: calc(100% - 2em);
+                margin: auto;
+                padding: 1em;
+                color: rgb(var(--gray-dark));
+            }
+            .title {
+                margin-bottom: 1em;
+                padding: 1em 0;
+                text-align: center;
+                line-height: 1;
+            }
+            .title h1 {
+                margin: 0 0 0.5em 0;
+            }
+            .date {
+                margin-bottom: 0.5em;
+                color: rgb(var(--gray));
+            }
+            /* タグのデザインを追加 */
+            .tags-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                justify-content: center;
+                margin-top: 1rem;
+            }
+            .tag-badge {
+                background-color: #f4f4f4;
+                color: #666;
+                padding: 0.2rem 0.6rem;
+                border-radius: 4px;
+                font-size: 0.85rem;
+                border: 1px solid #ddd;
+            }
+        </style>
+    </head>
 
-			.hero-image img {
-				display: block;
-				margin: 0 auto;
-				border-radius: 12px;
-				box-shadow: var(--box-shadow);
-				margin-bottom: 2em;
-			}
-			.prose {
-				width: 720px;
-				max-width: calc(100% - 2em);
-				margin: auto;
-				padding: 1em;
-				color: rgb(var(--gray-dark));
-			}
-			.title {
-				margin-bottom: 1em;
-				padding: 1em 0;
-				text-align: center;
-				line-height: 1;
-			}
-			.title h1 {
-				margin: 0 0 0.5em 0;
-			}
-			.date {
-				margin-bottom: 0.5em;
-				color: rgb(var(--gray));
-			}
-			.last-updated-on {
-				font-style: italic;
-			}
-		</style>
-	</head>
+    <body>
+        <Header />
+        <main>
+            <article>
+                <div class={heroImage ? "hero-image" : "hide-hero"}>
+                    {heroImage && <img width={1020} height={510} src={heroImage} alt="" />}
+                </div>
 
-	<body>
-		<Header />
-		<main>
-			<article>
-				{/* 修正：heroImageがある時だけ表示し、無い時はクラスで隠す */}
-				<div class={heroImage ? "hero-image" : "hide-hero"}>
-					{heroImage && <img width={1020} height={510} src={heroImage} alt="" />}
-				</div>
-
-				<div class="prose">
-					<div class="title">
-						<div class="date">
-							<FormattedDate date={pubDate} />
-							{
-								updatedDate && (
-									<div class="last-updated-on">
-										Last updated on <FormattedDate date={updatedDate} />
-									</div>
-								)
-							}
-						</div>
-						<h1>{title}</h1>
-						{tags && tags.length > 0 && (
-    <div class="tags-container">
-        {tags.map((tag) => (
-            <span class="tag-badge">#{tag}</span>
-        ))}
-    </div>
-)}
-						<hr />
-					</div>
-					<slot />
-				</div>
-			</article>
-		</main>
-		<Footer />
-	</body>
+                <div class="prose">
+                    <div class="title">
+                        <div class="date">
+                            <FormattedDate date={pubDate} />
+                            {
+                                updatedDate && (
+                                    <div class="last-updated-on">
+                                        Last updated on <FormattedDate date={updatedDate} />
+                                    </div>
+                                )
+                            }
+                        </div>
+                        <h1>{title}</h1>
+                        {/* 修正ポイント：tags (小文字) で判定 */}
+                        {tags && tags.length > 0 && (
+                            <div class="tags-container">
+                                {tags.map((tag: string) => (
+                                    <span class="tag-badge">#{tag}</span>
+                                ))}
+                            </div>
+                        )}
+                        <hr />
+                    </div>
+                    <slot />
+                </div>
+            </article>
+        </main>
+        <Footer />
+    </body>
 </html>
