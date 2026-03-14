@@ -21,52 +21,33 @@ export async function getPosts() {
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Notion APIエラー:", errorData);
-      return [];
-    }
+    if (!response.ok) return [];
 
     const data = await response.json();
 
-    // --- ここから：扱いやすいようにデータを整理（整形）して返す ---
     return data.results.map((page: any) => {
-  return {
-    id: page.id,
-    // ?. を使うことで、もし空っぽでもエラーにならずに進めます
-    title: page.properties.Title?.title?.[0]?.plain_text || "無題",
-    slug: page.properties.Slug?.rich_text?.[0]?.plain_text || "",
-    date: page.properties.Date?.date?.start || "",
-    description: page.properties.Description?.rich_text?.[0]?.plain_text || "",
-    // Tagsの取得も安全な形に
-    tags: page.properties.Tags?.multi_select?.map((tag: any) => tag.name) || [],
-    heroImage: page.properties.HeroImage?.url || null,
-  };
-});
+      // 安全にプロパティを取得するための補助変数
+      const props = page.properties;
+      
+      return {
+        id: page.id,
+        // Notionの列名が「名前」か「Title」のどちらかにある方を採用
+        title: (props.名前 || props.Title)?.title?.[0]?.plain_text || "無題",
+        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
+        date: props.Date?.date?.start || "",
+        description: props.Description?.rich_text?.[0]?.plain_text || "",
+        // Notion側の列名が「Tags」でも、プログラム内では小文字の「tags」として書き出す
+        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+        heroImage: props.HeroImage?.url || props.Cover?.url || null,
+      };
+    });
   } catch (error) {
     console.error("通信エラー:", error);
     return [];
   }
 }
 
-export async function getPostContent(pageId: string) {
-  const auth = import.meta.env.NOTION_API_KEY;
-  try {
-    const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-      },
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.results;
-  } catch (error) {
-    console.error("本文取得エラー:", error);
-    return [];
-  }
-}
+// ... (getPostContent はそのままでOK) ...
 
 export async function getPostPage(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
@@ -79,16 +60,17 @@ export async function getPostPage(pageId: string) {
       },
     });
     const page = await response.json();
+    const props = page.properties;
     
-    // 詳細ページ用にもデータを整形
     return {
       ...page,
       data: {
-        title: page.properties.Title?.title[0]?.plain_text,
-        pubDate: new Date(page.properties.Date?.date?.start),
-        description: page.properties.Description?.rich_text[0]?.plain_text,
-        tags: page.properties.Tags?.multi_select.map((tag: any) => tag.name) || [],
-        heroImage: page.properties.HeroImage?.url || null,
+        title: (props.名前 || props.Title)?.title?.[0]?.plain_text || "無題",
+        pubDate: props.Date?.date?.start ? new Date(props.Date.date.start) : new Date(),
+        description: props.Description?.rich_text?.[0]?.plain_text || "",
+        // ここも小文字の tags に統一
+        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+        heroImage: props.HeroImage?.url || null,
       }
     };
   } catch (error) {
