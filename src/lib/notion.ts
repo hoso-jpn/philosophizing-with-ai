@@ -27,26 +27,28 @@ export async function getPosts() {
     return data.results.map((page: any) => {
       const props = page.properties || {};
       
-    return {
-  id: page.id,
-  // 「名前（01など）」と「Title」を「；」で繋ぐ
-  title: (() => {
-    const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
-    const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
-    if (namePrefix && titleText) return `${namePrefix}；${titleText}`;
-    return titleText || namePrefix || "無題";
-  })(),
-  
-  slug: props.Slug?.rich_text?.[0]?.plain_text || "",
-  date: props.Date?.date?.start || "",
-  description: props.Description?.rich_text?.[0]?.plain_text || "",
-  
-  // Tags がマルチセレクトでもテキストでも取得できるように強化
-  tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
-        props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
-  
-  heroImage: props.HeroImage?.url || null,
-};
+      // 「名前（01など）」と「Title」を「；」で繋ぐロジック
+      const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
+      const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
+      let combinedTitle = "無題";
+      if (namePrefix && titleText) {
+        combinedTitle = `${namePrefix}；${titleText}`;
+      } else {
+        combinedTitle = titleText || namePrefix || "無題";
+      }
+
+      return {
+        id: page.id,
+        title: combinedTitle,
+        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
+        date: props.Date?.date?.start || "",
+        description: props.Description?.rich_text?.[0]?.plain_text || "",
+        // Tagsの取得を強化（マルチセレクト優先、次点でテキスト分割）
+        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
+              props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
+        heroImage: props.HeroImage?.url || null,
+      };
+    }); // ← ここで map を正しく閉じています
   } catch (error) {
     console.error("通信エラー:", error);
     return [];
@@ -84,16 +86,24 @@ export async function getPostPage(pageId: string) {
     const page = await response.json();
     const props = page.properties || {};
     
+    // 詳細ページ用も「名前 ； Title」の形式を作成
+    const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
+    const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
+    let combinedTitle = "無題";
+    if (namePrefix && titleText) {
+      combinedTitle = `${namePrefix}；${titleText}`;
+    } else {
+      combinedTitle = titleText || namePrefix || "無題";
+    }
+
     return {
       ...page,
       data: {
-        // 詳細ページ用も Title(rich_text) または 名前(title) を見るように修正
-        title: props.Title?.rich_text?.[0]?.plain_text || 
-               props.名前?.title?.[0]?.plain_text || 
-               "無題",
+        title: combinedTitle,
         pubDate: props.Date?.date?.start ? new Date(props.Date.date.start) : new Date(),
         description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
+              props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
         heroImage: props.HeroImage?.url || null,
       }
     };
