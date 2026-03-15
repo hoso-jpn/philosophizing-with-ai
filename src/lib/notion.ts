@@ -24,13 +24,14 @@ export async function getPosts() {
     if (!response.ok) return [];
     const data = await response.json();
 
+    // ↓ここから map 開始
     return data.results.map((page: any) => {
       const props = page.properties || {};
       
-      // 「名前（01など）」と「Title」を「；」で繋ぐロジック
       const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
       const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
       let combinedTitle = "無題";
+      
       if (namePrefix && titleText) {
         combinedTitle = `${namePrefix}；${titleText}`;
       } else {
@@ -43,13 +44,12 @@ export async function getPosts() {
         slug: props.Slug?.rich_text?.[0]?.plain_text || "",
         date: props.Date?.date?.start || "",
         description: props.Description?.rich_text?.[0]?.plain_text || "",
-        // Tagsの取得を強化（マルチセレクト優先、次点でテキスト分割）
         tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
               props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
         heroImage: props.HeroImage?.url || null,
       };
-    }); // ← ここで map を正しく閉じています
-  } catch (error) {
+    }); // ← 1. ここで map を閉じていることを確認しました
+  } catch (error) { // ← 2. ここで try を閉じ、catch を開始していることを確認しました
     console.error("通信エラー:", error);
     return [];
   }
@@ -86,10 +86,10 @@ export async function getPostPage(pageId: string) {
     const page = await response.json();
     const props = page.properties || {};
     
-    // 詳細ページ用も「名前 ； Title」の形式を作成
     const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
     const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
     let combinedTitle = "無題";
+    
     if (namePrefix && titleText) {
       combinedTitle = `${namePrefix}；${titleText}`;
     } else {
