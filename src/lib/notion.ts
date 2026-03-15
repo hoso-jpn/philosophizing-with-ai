@@ -27,19 +27,26 @@ export async function getPosts() {
     return data.results.map((page: any) => {
       const props = page.properties || {};
       
-      return {
-        id: page.id,
-        // Title列(rich_text)か名前列(title)のどちらかから取得
-        title: props.Title?.rich_text?.[0]?.plain_text || 
-               props.名前?.title?.[0]?.plain_text || 
-               "無題",
-        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
-        date: props.Date?.date?.start || "",
-        description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
-        heroImage: props.HeroImage?.url || null,
-      };
-    });
+    return {
+  id: page.id,
+  // 「名前（01など）」と「Title」を「；」で繋ぐ
+  title: (() => {
+    const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
+    const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
+    if (namePrefix && titleText) return `${namePrefix}；${titleText}`;
+    return titleText || namePrefix || "無題";
+  })(),
+  
+  slug: props.Slug?.rich_text?.[0]?.plain_text || "",
+  date: props.Date?.date?.start || "",
+  description: props.Description?.rich_text?.[0]?.plain_text || "",
+  
+  // Tags がマルチセレクトでもテキストでも取得できるように強化
+  tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
+        props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
+  
+  heroImage: props.HeroImage?.url || null,
+};
   } catch (error) {
     console.error("通信エラー:", error);
     return [];

@@ -24,7 +24,7 @@ const posts = await getPosts();
                 {posts.length > 0 ? (
                     <ul style="padding: 0;">
                         {posts.map((post: any) => {
-                            // すでに notion.ts で整理されているので、直接取り出せます
+                            // titleText は notion.ts 側で「名前 ； Title」の形に整形して渡される想定です
                             const titleText = post.title || "無題の記事";
                             const publishDate = post.date;
                             const tags = post.tags || [];
@@ -50,11 +50,11 @@ const posts = await getPosts();
                                             </h2>
                                         </a>
 
-                                        {/* タグの一覧表示を追加 */}
-                                        {tags.length > 0 && (
-                                            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                                        {/* タグの表示：キーワードが確実に表示されるようマージンとスタイルを調整 */}
+                                        {tags && tags.length > 0 && (
+                                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem;">
                                                 {tags.map((tag: string) => (
-                                                    <span style="background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: #666;">
+                                                    <span style="background: #f0f0f0; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; color: #555; border: 1px solid #e0e0e0;">
                                                         #{tag}
                                                     </span>
                                                 ))}
