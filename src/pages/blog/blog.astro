@@ -1,9 +1,10 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
-import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
-import { getPosts } from '../lib/notion';
+// components, consts, lib すべて ../../ に修正しました
+import BaseHead from '../../components/BaseHead.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { SITE_TITLE, SITE_DESCRIPTION } from '../../consts';
+import { getPosts } from '../../lib/notion';
 
 // 公開日が古い順（ascending）に並んだ状態で取得されます
 const posts = await getPosts();
