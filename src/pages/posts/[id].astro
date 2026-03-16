@@ -20,16 +20,19 @@ const { post } = Astro.props;
 const pageData = await getPostPage(id);
 
 // --- 徹底した安全策 ---
-// 1. 本文の取得 (pageData?.properties?.Content が無い場合も想定)
+// 1. 本文の取得
 const contentRichText = pageData?.properties?.Content?.rich_text || [];
 const markdownContent = contentRichText.map((t: any) => t.plain_text).join('') || "本文がありません。";
 const htmlContent = marked(markdownContent);
 
-// 2. タイトルの取得 (notion.tsで整形済みの post.title を優先)
+// 2. タイトルの取得
 const title = post?.title || pageData?.data?.title || "無題";
 
-// 3. タグの取得 (notion.tsで整形済みの post.tags を優先)
+// 3. タグの取得
 const tags = post?.tags || pageData?.data?.tags || [];
+
+// 4. 画像の取得 (notion.tsで取得したパスを使用)
+const heroImage = post?.heroImage || pageData?.data?.heroImage;
 ---
 
 <html lang="ja">
@@ -38,20 +41,27 @@ const tags = post?.tags || pageData?.data?.tags || [];
     <style is:global>
       main { width: 100%; max-width: 720px; margin: 0 auto; padding: 1em; }
       .notion-content { line-height: 1.8; margin-top: 2rem; }
-      .tags-container { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-      .tag-badge { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; color: #666; }
+      .tags-container { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; }
+      .tag-badge { background: #f0f0f0; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; color: #0070f3; text-decoration: none; border: 1px solid #e0e0e0; }
+      .hero-image { width: 100%; max-height: 450px; object-fit: cover; border-radius: 12px; margin: 1.5rem 0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
     </style>
   </head>
   <body>
     <Header />
     <main>
       <article>
-        <h1>{title}</h1>
+        <h1 style="margin-bottom: 0.5rem;">{title}</h1>
         
+        {/* 1. タイトル直下に画像を表示 */}
+        {heroImage && (
+          <img src={heroImage} alt={title} class="hero-image" />
+        )}
+
+        {/* 2. タグをクリック可能に修正 */}
         {tags.length > 0 && (
           <div class="tags-container">
             {tags.map((tag: string) => (
-              <span class="tag-badge">#{tag}</span>
+              <a href={`/tags/${tag}`} class="tag-badge">#{tag}</a>
             ))}
           </div>
         )}

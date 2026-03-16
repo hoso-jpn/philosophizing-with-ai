@@ -24,7 +24,6 @@ export async function getPosts() {
     if (!response.ok) return [];
     const data = await response.json();
 
-    // ↓ここから map 開始
     return data.results.map((page: any) => {
       const props = page.properties || {};
       
@@ -46,10 +45,13 @@ export async function getPosts() {
         description: props.Description?.rich_text?.[0]?.plain_text || "",
         tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
               props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
-        heroImage: props.HeroImage?.url || null,
+        // 画像URL取得の修正：ファイルアップロードと外部URLの両方に対応
+        heroImage: props.HeroImage?.files?.[0]?.file?.url || 
+                   props.HeroImage?.files?.[0]?.external?.url || 
+                   null,
       };
-    }); // ← 1. ここで map を閉じていることを確認しました
-  } catch (error) { // ← 2. ここで try を閉じ、catch を開始していることを確認しました
+    });
+  } catch (error) {
     console.error("通信エラー:", error);
     return [];
   }
@@ -104,7 +106,10 @@ export async function getPostPage(pageId: string) {
         description: props.Description?.rich_text?.[0]?.plain_text || "",
         tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || 
               props.Tags?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || [],
-        heroImage: props.HeroImage?.url || null,
+        // 詳細ページ用も同様に修正
+        heroImage: props.HeroImage?.files?.[0]?.file?.url || 
+                   props.HeroImage?.files?.[0]?.external?.url || 
+                   null,
       }
     };
   } catch (error) {
