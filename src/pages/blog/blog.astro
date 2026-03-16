@@ -1,0 +1,77 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import { getPosts } from '../lib/notion';
+
+// 公開日が古い順（ascending）に並んだ状態で取得されます
+const posts = await getPosts();
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <BaseHead title={`Blog | ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
+  </head>
+  <body>
+    <Header />
+    <main>
+      <section style="max-width: 720px; margin: auto; padding: 1em;">
+        <h1>思索の全記録</h1>
+        <p>これまでの対話を古い順に掲載しています。</p>
+        <hr />
+        
+        {posts.length > 0 ? (
+          <ul style="padding: 0;">
+            {posts.map((post: any) => {
+              const titleText = post.title || "無題の記事";
+              const publishDate = post.date;
+              const tags = post.tags || [];
+
+              const formattedDate = publishDate 
+                ? new Date(publishDate).toLocaleDateString('ja-JP', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })
+                : "公開日未設定";
+
+              return (
+                <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid #f4f4f4; padding-bottom: 1rem;">
+                  <article>
+                    <div style="font-size: 0.9rem; color: #888; margin-bottom: 0.2rem;">
+                      <time datetime={publishDate}>{formattedDate}</time>
+                    </div>
+                    
+                    <a href={`/posts/${post.id}`} style="text-decoration: none;">
+                      <h2 style="margin: 0; font-size: 1.4rem; color: #0070f3; cursor: pointer;">
+                        {titleText}
+                      </h2>
+                    </a>
+
+                    {/* タグの表示 */}
+                    {tags.length > 0 && (
+                      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem;">
+                        {tags.map((tag: string) => (
+                          <a href={`/tags/${tag}`} style="text-decoration: none;">
+                            <span style="background: #f0f0f0; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; color: #555; border: 1px solid #e0e0e0;">
+                              #{tag}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p>記事が見つかりませんでした。</p>
+        )}
+      </section>
+    </main>
+    <Footer />
+  </body>
+</html>
