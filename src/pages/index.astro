@@ -54,30 +54,71 @@ const postsByMonth = posts.reduce((acc, post) => {
   <head>
     <BaseHead title={`アーカイブ | ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
     <style>
-      main { max-width: 720px; margin: auto; padding: 1em; }
-      section { margin-bottom: 4rem; }
-      h2 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; margin-top: 2rem; display: flex; align-items: center; gap: 0.5rem; }
+      /* 基本設定：PCでは最大720px、スマホでは横幅いっぱいに広がる */
+      main { 
+        max-width: 720px; 
+        margin: auto; 
+        padding: 1rem; 
+        width: 100%; /* 横幅がいっぱいにならないように追加 */
+        box-sizing: border-box; /* パディングを含めた幅計算にする */
+      }
       
-      .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.5rem; }
+      section { margin-bottom: 3rem; }
+      
+      /* タイトルのフォントサイズをスマホで調整 */
+      h1 { 
+        font-size: 2.2rem; 
+        line-height: 1.2;
+        word-break: break-word; /* 長い単語での改行を許可 */
+      }
+
+      h2 { 
+        border-bottom: 2px solid #333; 
+        padding-bottom: 0.5rem; 
+        margin-top: 2rem; 
+        display: flex; 
+        align-items: center; 
+        gap: 0.5rem;
+        font-size: 1.5rem;
+      }
+      
+      /* タグクラウドをスマホで折り返しやすくする */
+      .tag-cloud { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 0.5rem; 
+        margin-top: 1rem; 
+      }
       .tag-item { 
         text-decoration: none; 
         background: #f8f9fa; 
         border: 1px solid #e9ecef; 
-        padding: 5px 15px; 
+        padding: 4px 12px; 
         border-radius: 20px; 
-        font-size: 0.9rem; 
+        font-size: 0.85rem; 
         color: #0070f3; 
         transition: all 0.2s;
+        white-space: nowrap; /* タグの中で改行させない */
       }
-      .tag-item:hover { background: #0070f3; color: white; border-color: #0070f3; }
-      .tag-count { font-size: 0.75rem; color: #888; margin-left: 4px; }
-      .tag-item:hover .tag-count { color: #eee; }
 
       .archive-list { list-style: none; padding: 0; }
-      .archive-item { margin: 1.2rem 0; padding-left: 1rem; border-left: 3px solid #eee; }
-      .archive-date { font-size: 0.85rem; color: #888; margin-bottom: 0.2rem; }
-      .archive-link { font-weight: 500; text-decoration: none; color: #333; }
+      .archive-item { 
+        margin: 1.2rem 0; 
+        padding-left: 1rem; 
+        border-left: 3px solid #eee;
+        word-break: break-all; /* タイトルが長い場合に端で改行させる */
+      }
+      .archive-date { font-size: 0.8rem; color: #888; margin-bottom: 0.2rem; }
+      .archive-link { font-weight: 500; text-decoration: none; color: #333; line-height: 1.4; }
       .archive-link:hover { color: #0070f3; text-decoration: underline; }
+
+      /* 【追加】スマートフォン用の微調整（画面幅600px以下） */
+      @media (max-width: 600px) {
+        h1 { font-size: 1.8rem; }
+        h2 { font-size: 1.3rem; }
+        main { padding: 0.8rem; } /* 余白を少し詰める */
+        .archive-item { padding-left: 0.8rem; }
+      }
     </style>
   </head>
   <body>
