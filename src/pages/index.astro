@@ -7,6 +7,15 @@ import { getPosts } from '../lib/notion';
 
 const posts = await getPosts();
 
+// 日付整形用の関数
+const formatDate = (dateStr: string) => {
+  return new Date(dateStr).toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
 // 1. キーワード（タグ）の集計
 const tagCounts = posts.reduce((acc, post) => {
   post.tags.forEach((tag: string) => {
@@ -15,7 +24,6 @@ const tagCounts = posts.reduce((acc, post) => {
   return acc;
 }, {} as Record<string, number>);
 
-// 出現回数順に並び替え
 const sortedTags = Object.entries(tagCounts)
   .sort(([, a], [, b]) => b - a);
 
@@ -50,7 +58,6 @@ const postsByMonth = posts.reduce((acc, post) => {
       section { margin-bottom: 4rem; }
       h2 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; margin-top: 2rem; display: flex; align-items: center; gap: 0.5rem; }
       
-      /* タグクラウドのスタイル */
       .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.5rem; }
       .tag-item { 
         text-decoration: none; 
@@ -67,8 +74,10 @@ const postsByMonth = posts.reduce((acc, post) => {
       .tag-item:hover .tag-count { color: #eee; }
 
       .archive-list { list-style: none; padding: 0; }
-      .archive-item { margin: 1rem 0; padding-left: 1rem; border-left: 3px solid #eee; }
-      .archive-date { font-size: 0.85rem; color: #888; }
+      .archive-item { margin: 1.2rem 0; padding-left: 1rem; border-left: 3px solid #eee; }
+      .archive-date { font-size: 0.85rem; color: #888; margin-bottom: 0.2rem; }
+      .archive-link { font-weight: 500; text-decoration: none; color: #333; }
+      .archive-link:hover { color: #0070f3; text-decoration: underline; }
     </style>
   </head>
   <body>
@@ -92,12 +101,12 @@ const postsByMonth = posts.reduce((acc, post) => {
         <h2>シリーズ別</h2>
         {postsBySeries.map(s => s.posts.length > 0 && (
           <div style="margin-bottom: 2rem;">
-            <h3 style="font-size: 1.2rem; color: #444;">{s.name}</h3>
+            <h3 style="font-size: 1.2rem; color: #444; margin-bottom: 1rem;">{s.name}</h3>
             <ul class="archive-list">
               {s.posts.map(post => (
                 <li class="archive-item">
-                  <div class="archive-date">{post.date}</div>
-                  <a href={`/posts/${post.id}`} style="font-weight: 500;">{post.title}</a>
+                  <div class="archive-date">{formatDate(post.date)}</div>
+                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
                 </li>
               ))}
             </ul>
@@ -109,11 +118,12 @@ const postsByMonth = posts.reduce((acc, post) => {
         <h2>月別</h2>
         {Object.keys(postsByMonth).sort().reverse().map(month => (
           <div style="margin-bottom: 1.5rem;">
-            <h3 style="font-size: 1.1rem; color: #666;">{month}</h3>
+            <h3 style="font-size: 1.1rem; color: #666; border-left: 4px solid #ccc; padding-left: 10px;">{month}</h3>
             <ul class="archive-list">
               {postsByMonth[month].map(post => (
                 <li class="archive-item">
-                  <a href={`/posts/${post.id}`}>{post.title}</a>
+                  <div class="archive-date">{formatDate(post.date)}</div>
+                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
                 </li>
               ))}
             </ul>
