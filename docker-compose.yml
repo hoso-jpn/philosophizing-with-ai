@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    ports:
+      - "4321:4321"
+    env_file:
+      - .env  # ここで .env ファイル（後述）から読み込む
+    volumes:
+      - .:/app
+      - /app/node_modules
