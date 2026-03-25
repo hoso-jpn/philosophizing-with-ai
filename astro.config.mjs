@@ -1,13 +1,12 @@
-// @ts-check
+// astro.config.mjs
+import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
-import { defineConfig } from 'astro/config';
-import vercel from '@astrojs/vercel/static'; // Vercel用の静的アダプターをインポート
+import vercel from '@astrojs/vercel/static'; // 追加
 
-// https://astro.build/config
 export default defineConfig({
-    site: 'https://philosophizing-with-ai.vercel.app', // あなたのサイトURLに変更
-    output: 'static', // 明示的に静的モードを指定
-    integrations: [mdx(), sitemap()],
-    adapter: vercel(), // Vercelアダプターを有効化
+  site: 'https://philosophizing-with-ai.vercel.app',
+  output: 'static', // 静的サイトとしてビルド
+  integrations: [mdx(), sitemap()],
+  adapter: vercel(), // これによりビルド成果物の配置がVercel最適化されます
 });
