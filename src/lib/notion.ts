@@ -24,10 +24,20 @@ export async function getPosts() {
 
     return await Promise.all(data.results.map(async (page: any) => {
       const props = page.properties || {};
+      
+      // タイトル結合
       const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
       const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
       const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
 
+      // --- 【修正ポイント】タグ取得をより強力にする ---
+      const tagsProp = props.Tags || props["タグ"]; // プロパティ名が日本語の場合もカバー
+      const tags = tagsProp?.multi_select?.map((tag: any) => tag.name) || 
+                   tagsProp?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || 
+                   [];
+      // ------------------------------------------
+
+      // 画像保存
       const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
       let finalHeroImage = rawHeroImage;
       if (rawHeroImage) {
@@ -40,7 +50,7 @@ export async function getPosts() {
         slug: props.Slug?.rich_text?.[0]?.plain_text || "",
         date: props.Date?.date?.start || "",
         description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+        tags: tags, // 修正後のタグを反映
         heroImage: finalHeroImage,
       };
     }));
@@ -50,7 +60,7 @@ export async function getPosts() {
   }
 }
 
-// 2. 記事の詳細（メタデータ）を取得する関数
+// 2. 記事の詳細を取得する関数
 export async function getPostPage(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
   try {
@@ -70,6 +80,13 @@ export async function getPostPage(pageId: string) {
     const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
     const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
 
+    // --- 【修正ポイント】詳細ページ側のタグ取得も同様に強化 ---
+    const tagsProp = props.Tags || props["タグ"];
+    const tags = tagsProp?.multi_select?.map((tag: any) => tag.name) || 
+                 tagsProp?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || 
+                 [];
+    // ----------------------------------------------------
+
     const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
     let finalHeroImage = rawHeroImage;
     if (rawHeroImage) {
@@ -82,7 +99,7 @@ export async function getPostPage(pageId: string) {
         title: combinedTitle,
         pubDate: props.Date?.date?.start ? new Date(props.Date.date.start) : new Date(),
         description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: props.Tags?.multi_select?.map((tag: any) => tag.name) || [],
+        tags: tags,
         heroImage: finalHeroImage,
       }
     };
@@ -92,7 +109,7 @@ export async function getPostPage(pageId: string) {
   }
 }
 
-// 3. 記事の本文（ブロック）を取得する関数
+// 3. 本文を取得（変更なし）
 export async function getPostContent(pageId: string) {
   const auth = import.meta.env.NOTION_API_KEY;
   try {
