@@ -2,11 +2,11 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
-import vercel from '@astrojs/vercel/static'; // 追加
+import vercel from '@astrojs/vercel'; // 「/static」を消してこれだけにします
 
 export default defineConfig({
   site: 'https://philosophizing-with-ai.vercel.app',
-  output: 'static', // 静的サイトとしてビルド
+  output: 'static', 
   integrations: [mdx(), sitemap()],
-  adapter: vercel(), // これによりビルド成果物の配置がVercel最適化されます
+  adapter: vercel(), // ここはそのままでOKです
 });
