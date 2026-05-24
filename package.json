@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build --remote", // ★ `--remote` を追加、または単に `astro build` のままでアダプターを強制認識させる
+    "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
