@@ -5,7 +5,7 @@ import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
 export default defineConfig({
     site: 'https://philosophizing-with-ai.vercel.app',
-    output: 'hybrid',
+    output: 'server',
     integrations: [mdx(), sitemap()],
     adapter: vercel(),
     image: {
