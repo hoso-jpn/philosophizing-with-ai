@@ -34,10 +34,13 @@ export async function getPosts() {
       const tagsProp = props.Tags || props["タグ"]; // プロパティ名が日本語の場合もカバー
       let tags = [];
       if (tagsProp) {
-        if (tagsProp.multi_select) {
-          tags = tagsProp.multi_select.map((tag: any) => tag.name);
-        } else if (tagsProp.rich_text && tagsProp.rich_text[0]?.plain_text) {
-          tags = tagsProp.rich_text[0].plain_text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+        if (Array.isArray(tagsProp.multi_select)) {
+          tags = tagsProp.multi_select.map((tag) => tag?.name).filter(Boolean);
+        } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
+          const text = tagsProp.rich_text[0]?.plain_text;
+          if (typeof text === 'string') {
+            tags = text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+          }
         }
       }
       // ------------------------------------------
@@ -89,10 +92,13 @@ export async function getPostPage(pageId: string) {
     const tagsProp = props.Tags || props["タグ"];
     let tags = [];
     if (tagsProp) {
-      if (tagsProp.multi_select) {
-        tags = tagsProp.multi_select.map((tag: any) => tag.name);
-      } else if (tagsProp.rich_text && tagsProp.rich_text[0]?.plain_text) {
-        tags = tagsProp.rich_text[0].plain_text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+      if (Array.isArray(tagsProp.multi_select)) {
+        tags = tagsProp.multi_select.map((tag) => tag?.name).filter(Boolean);
+      } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
+        const text = tagsProp.rich_text[0]?.plain_text;
+        if (typeof text === 'string') {
+          tags = text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+        }
       }
     }
     // ----------------------------------------------------
