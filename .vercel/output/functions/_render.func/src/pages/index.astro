@@ -1,0 +1,178 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import { getPosts } from '../lib/notion';
+
+const posts = await getPosts();
+
+// 日付整形用の関数
+const formatDate = (dateStr: string) => {
+  return new Date(dateStr).toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+// 1. キーワード（タグ）の集計
+const tagCounts = posts.reduce((acc, post) => {
+  post.tags.forEach((tag: string) => {
+    acc[tag] = (acc[tag] || 0) + 1;
+  });
+  return acc;
+}, {} as Record<string, number>);
+
+const sortedTags = Object.entries(tagCounts)
+  .sort(([, a], [, b]) => b - a);
+
+// 2. シリーズ（カテゴリ）ごとに分類
+const series = [
+  { name: 'AIと哲学', pattern: /AIと哲学/ },
+  { name: 'AIと生物学', pattern: /AIと生物学/ },
+  { name: 'AIと統計学', pattern: /AIと統計学/ },
+];
+
+const postsBySeries = series.map(s => ({
+  name: s.name,
+  posts: posts.filter(p => s.pattern.test(p.title))
+}));
+
+// 3. 月別アーカイブの作成
+const postsByMonth = posts.reduce((acc, post) => {
+  const date = new Date(post.date);
+  const month = `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  if (!acc[month]) acc[month] = [];
+  acc[month].push(post);
+  return acc;
+}, {} as Record<string, any[]>);
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta name="google-site-verification" content="xAMHzqx75cGq6U6AeyghX7W6Z9Cuwp2l9pNO1DEjiaQ" />
+    <BaseHead title={`アーカイブ | ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
+    <style>
+      /* 基本設定：PCでは最大720px、スマホでは横幅いっぱいに広がる */
+      main { 
+        max-width: 720px; 
+        margin: auto; 
+        padding: 1rem; 
+        width: 100%; /* 横幅がいっぱいにならないように追加 */
+        box-sizing: border-box; /* パディングを含めた幅計算にする */
+      }
+      
+      section { margin-bottom: 3rem; }
+      
+      /* タイトルのフォントサイズをスマホで調整 */
+      h1 { 
+        font-size: 2.2rem; 
+        line-height: 1.2;
+        word-break: break-word; /* 長い単語での改行を許可 */
+      }
+
+      h2 { 
+        border-bottom: 2px solid #333; 
+        padding-bottom: 0.5rem; 
+        margin-top: 2rem; 
+        display: flex; 
+        align-items: center; 
+        gap: 0.5rem;
+        font-size: 1.5rem;
+      }
+      
+      /* タグクラウドをスマホで折り返しやすくする */
+      .tag-cloud { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 0.5rem; 
+        margin-top: 1rem; 
+      }
+      .tag-item { 
+        text-decoration: none; 
+        background: #f8f9fa; 
+        border: 1px solid #e9ecef; 
+        padding: 4px 12px; 
+        border-radius: 20px; 
+        font-size: 0.85rem; 
+        color: #0070f3; 
+        transition: all 0.2s;
+        white-space: nowrap; /* タグの中で改行させない */
+      }
+
+      .archive-list { list-style: none; padding: 0; }
+      .archive-item { 
+        margin: 1.2rem 0; 
+        padding-left: 1rem; 
+        border-left: 3px solid #eee;
+        word-break: break-all; /* タイトルが長い場合に端で改行させる */
+      }
+      .archive-date { font-size: 0.8rem; color: #888; margin-bottom: 0.2rem; }
+      .archive-link { font-weight: 500; text-decoration: none; color: #333; line-height: 1.4; }
+      .archive-link:hover { color: #0070f3; text-decoration: underline; }
+
+      /* 【追加】スマートフォン用の微調整（画面幅600px以下） */
+      @media (max-width: 600px) {
+        h1 { font-size: 1.8rem; }
+        h2 { font-size: 1.3rem; }
+        main { padding: 0.8rem; } /* 余白を少し詰める */
+        .archive-item { padding-left: 0.8rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <Header />
+    <main>
+      <h1 style="font-size: 2.2rem; margin-bottom: 2rem;">思索のアーカイブ</h1>
+
+      <section>
+        <h2>キーワード集</h2>
+        <p style="font-size: 0.9rem; color: #666;">よく触れられている思索のテーマ</p>
+        <div class="tag-cloud">
+          {sortedTags.map(([tag, count]) => (
+            <a href={`/tags/${tag}`} class="tag-item">
+              #{tag} <span class="tag-count">({count})</span>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>シリーズ別</h2>
+        {postsBySeries.map(s => s.posts.length > 0 && (
+          <div style="margin-bottom: 2rem;">
+            <h3 style="font-size: 1.2rem; color: #444; margin-bottom: 1rem;">{s.name}</h3>
+            <ul class="archive-list">
+              {s.posts.map(post => (
+                <li class="archive-item">
+                  <div class="archive-date">{formatDate(post.date)}</div>
+                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+
+      <section>
+        <h2>月別</h2>
+        {Object.keys(postsByMonth).sort().reverse().map(month => (
+          <div style="margin-bottom: 1.5rem;">
+            <h3 style="font-size: 1.1rem; color: #666; border-left: 4px solid #ccc; padding-left: 10px;">{month}</h3>
+            <ul class="archive-list">
+              {postsByMonth[month].map(post => (
+                <li class="archive-item">
+                  <div class="archive-date">{formatDate(post.date)}</div>
+                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+    </main>
+    <Footer />
+  </body>
+</html>

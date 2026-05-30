@@ -66,11 +66,18 @@ const { title, description, pubDate, updatedDate, heroImage, tags } = Astro.prop
             }
             .tag-badge {
                 background-color: #f4f4f4;
-                color: #666;
+                color: #0070f3;
                 padding: 0.2rem 0.6rem;
                 border-radius: 4px;
                 font-size: 0.85rem;
                 border: 1px solid #ddd;
+                text-decoration: none;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .tag-badge:hover {
+                background-color: #e8f0fe;
+                border-color: #0070f3;
             }
         </style>
     </head>
@@ -100,7 +107,7 @@ const { title, description, pubDate, updatedDate, heroImage, tags } = Astro.prop
                         {tags && tags.length > 0 && (
                             <div class="tags-container">
                                 {tags.map((tag: string) => (
-                                    <span class="tag-badge">#{tag}</span>
+                                    <a href={`/tags/${tag}`} class="tag-badge">#{tag}</a>
                                 ))}
                             </div>
                         )}
