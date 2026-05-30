@@ -2,8 +2,8 @@ import { saveImageLocally } from './download-image';
 
 // 1. 記事一覧を取得する関数
 export async function getPosts() {
-  const auth = import.meta.env.NOTION_API_KEY;
-  const databaseId = import.meta.env.NOTION_DATABASE_ID;
+  const auth = process.env.NOTION_API_KEY;
+  const databaseId = process.env.NOTION_DATABASE_ID;
 
   try {
     const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
@@ -70,7 +70,7 @@ export async function getPosts() {
 
 // 2. 記事の詳細を取得する関数
 export async function getPostPage(pageId: string) {
-  const auth = import.meta.env.NOTION_API_KEY;
+  const auth = process.env.NOTION_API_KEY;
   try {
     const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
       method: 'GET',
@@ -127,7 +127,7 @@ export async function getPostPage(pageId: string) {
 
 // 3. 本文を取得（変更なし）
 export async function getPostContent(pageId: string) {
-  const auth = import.meta.env.NOTION_API_KEY;
+  const auth = process.env.NOTION_API_KEY;
   try {
     const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
       method: 'GET',
