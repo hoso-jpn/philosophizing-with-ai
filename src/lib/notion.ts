@@ -32,9 +32,14 @@ export async function getPosts() {
 
       // --- 【修正ポイント】タグ取得をより強力にする ---
       const tagsProp = props.Tags || props["タグ"]; // プロパティ名が日本語の場合もカバー
-      const tags = tagsProp?.multi_select?.map((tag: any) => tag.name) || 
-                   tagsProp?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || 
-                   [];
+      let tags = [];
+      if (tagsProp) {
+        if (tagsProp.multi_select) {
+          tags = tagsProp.multi_select.map((tag: any) => tag.name);
+        } else if (tagsProp.rich_text && tagsProp.rich_text[0]?.plain_text) {
+          tags = tagsProp.rich_text[0].plain_text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+        }
+      }
       // ------------------------------------------
 
       // 画像保存
@@ -82,9 +87,14 @@ export async function getPostPage(pageId: string) {
 
     // --- 【修正ポイント】詳細ページ側のタグ取得も同様に強化 ---
     const tagsProp = props.Tags || props["タグ"];
-    const tags = tagsProp?.multi_select?.map((tag: any) => tag.name) || 
-                 tagsProp?.rich_text?.[0]?.plain_text?.split(/[、, ]/).filter(Boolean) || 
-                 [];
+    let tags = [];
+    if (tagsProp) {
+      if (tagsProp.multi_select) {
+        tags = tagsProp.multi_select.map((tag: any) => tag.name);
+      } else if (tagsProp.rich_text && tagsProp.rich_text[0]?.plain_text) {
+        tags = tagsProp.rich_text[0].plain_text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
+      }
+    }
     // ----------------------------------------------------
 
     const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
