@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
 import { getPosts } from '../lib/notion';
+import { getSlugFromTag } from '../lib/tag-slugs';
 
 const posts = await getPosts();
 
@@ -132,7 +133,7 @@ const postsByMonth = posts.reduce((acc, post) => {
         <p style="font-size: 0.9rem; color: #666;">よく触れられている思索のテーマ</p>
         <div class="tag-cloud">
           {sortedTags.map(([tag, count]) => (
-            <a href={`/tags/${tag}`} class="tag-item">
+            <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-item">
               #{tag} <span class="tag-count">({count})</span>
             </a>
           ))}

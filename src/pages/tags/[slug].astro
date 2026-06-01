@@ -4,8 +4,10 @@ import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../../consts';
 import { getPosts } from '../../lib/notion';
+import { getTagFromSlug } from '../../lib/tag-slugs';
 
-const { tag } = Astro.params;
+const { slug } = Astro.params;
+const tag = getTagFromSlug(slug as string) ?? decodeURIComponent(slug as string);
 const allPosts = await getPosts();
 const posts = allPosts.filter((post) => post.tags.includes(tag));
 ---

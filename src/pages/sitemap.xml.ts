@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getPostsForSitemap } from '../lib/notion';
+import { getSlugFromTag } from '../lib/tag-slugs';
 
 const SITE = 'https://philosophizing-with-ai.vercel.app';
 
@@ -23,7 +24,7 @@ export const GET: APIRoute = async () => {
 
     const uniqueTags = [...new Set(posts.flatMap((p) => p.tags))];
     const tagEntries: SitemapEntry[] = uniqueTags.map((tag) => ({
-        url: `${SITE}/tags/${encodeURIComponent(tag)}`,
+        url: `${SITE}/tags/${getSlugFromTag(tag)}`,
         priority: '0.6',
         changefreq: 'weekly',
     }));
