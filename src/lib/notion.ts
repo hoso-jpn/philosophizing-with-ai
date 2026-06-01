@@ -125,8 +125,41 @@ export async function getPostPage(pageId: string) {
   }
 }
 
-// 4. サイトマップ用: 画像ダウンロードなしで id / tags / date のみ取得
-export async function getPostsForSitemap(): Promise<{ id: string; tags: string[]; date: string }[]> {
+// 4. slug から Notion ページ ID を取得
+export async function getPostIdBySlug(slug: string): Promise<string | null> {
+  const auth = process.env.NOTION_API_KEY;
+  const databaseId = process.env.NOTION_DATABASE_ID;
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${auth}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filter: {
+          and: [
+            { property: "Published", checkbox: { equals: true } },
+            { property: "Slug", rich_text: { equals: slug } },
+          ],
+        },
+        page_size: 1,
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data.results || data.results.length === 0) return null;
+    return data.results[0].id as string;
+  } catch {
+    return null;
+  }
+}
+
+// 5. サイトマップ用: 画像ダウンロードなしで id / slug / tags / date のみ取得
+export async function getPostsForSitemap(): Promise<{ id: string; slug: string; tags: string[]; date: string }[]> {
   const auth = process.env.NOTION_API_KEY;
   const databaseId = process.env.NOTION_DATABASE_ID;
 
@@ -164,6 +197,7 @@ export async function getPostsForSitemap(): Promise<{ id: string; tags: string[]
 
       return {
         id: page.id,
+        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
         tags,
         date: props.Date?.date?.start || "",
       };

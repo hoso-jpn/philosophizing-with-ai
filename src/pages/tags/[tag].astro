@@ -27,7 +27,7 @@ const posts = allPosts.filter((post) => post.tags.includes(tag));
             {posts.map((post) => (
               <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid #f4f4f4; padding-bottom: 1rem;">
                 <div style="font-size: 0.9rem; color: #888;">{post.date}</div>
-                <a href={`/posts/${post.id}`} style="text-decoration: none;">
+                <a href={`/posts/${post.slug || post.id}`} style="text-decoration: none;">
                   <h2 style="margin: 0; font-size: 1.4rem; color: #0070f3;">{post.title}</h2>
                 </a>
               </li>

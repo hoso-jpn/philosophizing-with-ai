@@ -45,7 +45,7 @@ const posts = await getPosts();
                       <time datetime={publishDate}>{formattedDate}</time>
                     </div>
                     
-                    <a href={`/posts/${post.id}`} style="text-decoration: none;">
+                    <a href={`/posts/${post.slug || post.id}`} style="text-decoration: none;">
                       <h2 style="margin: 0; font-size: 1.4rem; color: #0070f3; cursor: pointer;">
                         {titleText}
                       </h2>

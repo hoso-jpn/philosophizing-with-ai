@@ -1,20 +1,14 @@
 ---
-import { getPosts, getPostPage } from '../../lib/notion';
-import { marked } from 'marked'; 
+import { getPostIdBySlug, getPostPage } from '../../lib/notion';
+import { marked } from 'marked';
 import BaseHead from '../../components/BaseHead.astro';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 
-export async function getStaticPaths() {
-  const posts = await getPosts();
-  return posts.map((post: any) => ({
-    params: { id: post.id },
-    props: { post },
-  }));
-}
+const { slug } = Astro.params;
 
-const { id } = Astro.params;
-const { post } = Astro.props;
+const id = await getPostIdBySlug(slug as string);
+if (!id) return new Response("Not found", { status: 404 });
 
 // 詳細データを取得
 const pageData = await getPostPage(id);
@@ -26,13 +20,13 @@ const markdownContent = contentRichText.map((t: any) => t.plain_text).join('') |
 const htmlContent = marked(markdownContent);
 
 // 2. タイトルの取得
-const title = post?.title || pageData?.data?.title || "無題";
+const title = pageData?.data?.title || "無題";
 
 // 3. タグの取得
-const tags = post?.tags || pageData?.data?.tags || [];
+const tags = pageData?.data?.tags || [];
 
 // 4. 画像の取得 (notion.tsで取得したパスを使用)
-const heroImage = post?.heroImage || pageData?.data?.heroImage;
+const heroImage = pageData?.data?.heroImage;
 ---
 
 <html lang="ja">

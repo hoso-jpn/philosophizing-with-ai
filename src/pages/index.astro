@@ -148,7 +148,7 @@ const postsByMonth = posts.reduce((acc, post) => {
               {s.posts.map(post => (
                 <li class="archive-item">
                   <div class="archive-date">{formatDate(post.date)}</div>
-                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
+                  <a href={`/posts/${post.slug || post.id}`} class="archive-link">{post.title}</a>
                 </li>
               ))}
             </ul>
@@ -165,7 +165,7 @@ const postsByMonth = posts.reduce((acc, post) => {
               {postsByMonth[month].map(post => (
                 <li class="archive-item">
                   <div class="archive-date">{formatDate(post.date)}</div>
-                  <a href={`/posts/${post.id}`} class="archive-link">{post.title}</a>
+                  <a href={`/posts/${post.slug || post.id}`} class="archive-link">{post.title}</a>
                 </li>
               ))}
             </ul>

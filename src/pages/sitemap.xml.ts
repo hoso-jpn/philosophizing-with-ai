@@ -15,7 +15,7 @@ export const GET: APIRoute = async () => {
     const posts = await getPostsForSitemap();
 
     const postEntries: SitemapEntry[] = posts.map((post) => ({
-        url: `${SITE}/posts/${post.id}`,
+        url: `${SITE}/posts/${post.slug || post.id}`,
         lastmod: post.date ? post.date.slice(0, 10) : undefined,
         priority: '0.8',
         changefreq: 'weekly',
