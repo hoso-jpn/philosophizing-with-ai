@@ -1,17 +1,12 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
-import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
 export default defineConfig({
     site: 'https://philosophizing-with-ai.vercel.app',
     output: 'server',
-    // ⬇️ sitemap() の中に serverSite オプションを追加します
     integrations: [
         mdx(),
-        sitemap({
-            serverSite: 'https://philosophizing-with-ai.vercel.app'
-        })
     ],
     adapter: vercel(),
     image: {
