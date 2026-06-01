@@ -16,14 +16,14 @@ export const GET: APIRoute = async () => {
 
     const postEntries: SitemapEntry[] = posts.map((post) => ({
         url: `${SITE}/posts/${post.id}`,
-        lastmod: post.date || undefined,
+        lastmod: post.date ? post.date.slice(0, 10) : undefined,
         priority: '0.8',
         changefreq: 'weekly',
     }));
 
     const uniqueTags = [...new Set(posts.flatMap((p) => p.tags))];
     const tagEntries: SitemapEntry[] = uniqueTags.map((tag) => ({
-        url: `${SITE}/tags/${tag}`,
+        url: `${SITE}/tags/${encodeURIComponent(tag)}`,
         priority: '0.6',
         changefreq: 'weekly',
     }));
