@@ -6,7 +6,13 @@ import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 export default defineConfig({
     site: 'https://philosophizing-with-ai.vercel.app',
     output: 'server',
-    integrations: [mdx(), sitemap()],
+    // ⬇️ sitemap() の中に serverSite オプションを追加します
+    integrations: [
+        mdx(),
+        sitemap({
+            serverSite: 'https://philosophizing-with-ai.vercel.app'
+        })
+    ],
     adapter: vercel(),
     image: {
         domains: [
