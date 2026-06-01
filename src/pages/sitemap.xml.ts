@@ -42,6 +42,9 @@ ${allEntries.map((entry) => `  <url>
 
     return new Response(xml, {
         status: 200,
-        headers: { 'Content-Type': 'application/xml' },
+        headers: {
+            'Content-Type': 'application/xml',
+            'Cache-Control': 'public, max-age=0, s-maxage=3600',
+        },
     });
 };
