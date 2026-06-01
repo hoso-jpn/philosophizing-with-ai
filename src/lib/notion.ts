@@ -125,6 +125,54 @@ export async function getPostPage(pageId: string) {
   }
 }
 
+// 4. サイトマップ用: 画像ダウンロードなしで id / tags / date のみ取得
+export async function getPostsForSitemap(): Promise<{ id: string; tags: string[]; date: string }[]> {
+  const auth = process.env.NOTION_API_KEY;
+  const databaseId = process.env.NOTION_DATABASE_ID;
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${auth}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filter: { property: "Published", checkbox: { equals: true } },
+      }),
+    });
+
+    if (!response.ok) return [];
+    const data = await response.json();
+
+    return data.results.map((page: any) => {
+      const props = page.properties || {};
+
+      const tagsProp = props.Tags || props["タグ"];
+      let tags: string[] = [];
+      if (tagsProp) {
+        if (Array.isArray(tagsProp.multi_select)) {
+          tags = tagsProp.multi_select.map((tag: any) => tag?.name).filter(Boolean);
+        } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
+          const text = tagsProp.rich_text[0]?.plain_text;
+          if (typeof text === 'string') {
+            tags = text.split(/[、, ]/).map((s: string) => s.trim()).filter(Boolean);
+          }
+        }
+      }
+
+      return {
+        id: page.id,
+        tags,
+        date: props.Date?.date?.start || "",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // 3. 本文を取得（変更なし）
 export async function getPostContent(pageId: string) {
   const auth = process.env.NOTION_API_KEY;
