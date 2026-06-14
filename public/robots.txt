@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://philosophizing-with-ai.vercel.app/sitemap.xml
-Sitemap: https://philosophizing-with-ai.vercel.app/sitemap-google.xml
+Sitemap: https://philosophizing-with-ai.vercel.app/sitemap.txt
