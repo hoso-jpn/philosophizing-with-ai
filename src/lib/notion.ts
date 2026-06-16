@@ -1,5 +1,19 @@
 import { saveImageLocally } from './download-image';
 
+function extractTags(tagsProp: any): string[] {
+  if (!tagsProp) return [];
+  if (Array.isArray(tagsProp.multi_select)) {
+    return tagsProp.multi_select.map((tag: any) => tag?.name).filter(Boolean);
+  }
+  if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
+    const text = tagsProp.rich_text[0]?.plain_text;
+    if (typeof text === 'string') {
+      return text.split(/[、, ]/).map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 // 1. 記事一覧を取得する関数
 export async function getPosts() {
   const auth = process.env.NOTION_API_KEY;
@@ -30,20 +44,7 @@ export async function getPosts() {
       const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
       const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
 
-      // --- 【修正ポイント】タグ取得をより強力にする ---
-      const tagsProp = props.Tags || props["タグ"]; // プロパティ名が日本語の場合もカバー
-      let tags = [];
-      if (tagsProp) {
-        if (Array.isArray(tagsProp.multi_select)) {
-          tags = tagsProp.multi_select.map((tag) => tag?.name).filter(Boolean);
-        } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
-          const text = tagsProp.rich_text[0]?.plain_text;
-          if (typeof text === 'string') {
-            tags = text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
-          }
-        }
-      }
-      // ------------------------------------------
+      const tags = extractTags(props.Tags || props["タグ"]);
 
       // 画像保存
       const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
@@ -88,20 +89,7 @@ export async function getPostPage(pageId: string) {
     const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
     const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
 
-    // --- 【修正ポイント】詳細ページ側のタグ取得も同様に強化 ---
-    const tagsProp = props.Tags || props["タグ"];
-    let tags = [];
-    if (tagsProp) {
-      if (Array.isArray(tagsProp.multi_select)) {
-        tags = tagsProp.multi_select.map((tag) => tag?.name).filter(Boolean);
-      } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
-        const text = tagsProp.rich_text[0]?.plain_text;
-        if (typeof text === 'string') {
-          tags = text.split(/[、, ]/).map(s => s.trim()).filter(Boolean);
-        }
-      }
-    }
-    // ----------------------------------------------------
+    const tags = extractTags(props.Tags || props["タグ"]);
 
     const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
     let finalHeroImage = rawHeroImage;
@@ -182,18 +170,7 @@ export async function getPostsForSitemap(): Promise<{ id: string; slug: string; 
     return data.results.map((page: any) => {
       const props = page.properties || {};
 
-      const tagsProp = props.Tags || props["タグ"];
-      let tags: string[] = [];
-      if (tagsProp) {
-        if (Array.isArray(tagsProp.multi_select)) {
-          tags = tagsProp.multi_select.map((tag: any) => tag?.name).filter(Boolean);
-        } else if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
-          const text = tagsProp.rich_text[0]?.plain_text;
-          if (typeof text === 'string') {
-            tags = text.split(/[、, ]/).map((s: string) => s.trim()).filter(Boolean);
-          }
-        }
-      }
+      const tags = extractTags(props.Tags || props["タグ"]);
 
       return {
         id: page.id,

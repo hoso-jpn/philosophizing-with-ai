@@ -28,7 +28,14 @@ export const POST: APIRoute = async ({ request }) => {
         // 2. Handle actual updates by triggering a Vercel build
         console.log("Received Notion update (or other request). Triggering Vercel build...");
 
-        const vercelDeployHookUrl = "https://api.vercel.com/v1/integrations/deploy/prj_NLlTHQaEousQs5Qvbnm65fDxkHYm/oJlRJcS0Nn";
+        const vercelDeployHookUrl = process.env.VERCEL_DEPLOY_HOOK_URL;
+        if (!vercelDeployHookUrl) {
+            console.error("VERCEL_DEPLOY_HOOK_URL environment variable is not set.");
+            return new Response(JSON.stringify({ error: "Server configuration error" }), {
+                status: 500,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
 
         const vResponse = await fetch(vercelDeployHookUrl, {
             method: "POST"
