@@ -5,7 +5,7 @@ import { getSlugFromTag } from '../lib/tag-slugs';
 // 💡 これにより、ビルド時にNotionからデータを取得し、静的なsitemap.xmlが生成されるようになります
 export const prerender = true;
 
-const SITE = 'https://philosophizing-with-ai.vercel.app';
+const SITE = 'https://blog.florigen.ai';
 
 type SitemapEntry = { url: string; priority: string; changefreq: string; lastmod?: string };
 

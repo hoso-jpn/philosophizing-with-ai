@@ -3,7 +3,7 @@ import mdx from '@astrojs/mdx';
 import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
 export default defineConfig({
-    site: 'https://philosophizing-with-ai.vercel.app',
+    site: 'https://blog.florigen.ai',
     output: 'server',
     integrations: [
         mdx(),
