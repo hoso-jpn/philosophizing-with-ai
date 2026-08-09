@@ -39,14 +39,14 @@ const posts = await getPosts();
                 : "公開日未設定";
 
               return (
-                <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid #f4f4f4; padding-bottom: 1rem;">
+                <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
                   <article>
-                    <div style="font-size: 0.9rem; color: #888; margin-bottom: 0.2rem;">
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.2rem;">
                       <time datetime={publishDate}>{formattedDate}</time>
                     </div>
                     
                     <a href={`/posts/${post.slug || post.id}`} style="text-decoration: none;">
-                      <h2 style="margin: 0; font-size: 1.4rem; color: #0070f3; cursor: pointer;">
+                      <h2 style="margin: 0; font-size: 1.4rem; color: var(--green-bright); cursor: pointer;">
                         {titleText}
                       </h2>
                     </a>
@@ -56,7 +56,7 @@ const posts = await getPosts();
                       <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem;">
                         {tags.map((tag: string) => (
                           <a href={`/tags/${getSlugFromTag(tag)}`} style="text-decoration: none;">
-                            <span style="background: #f0f0f0; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; color: #555; border: 1px solid #e0e0e0;">
+                            <span style="background: var(--bg-card); padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; color: var(--green-light); border: 1px solid var(--border);">
                               #{tag}
                             </span>
                           </a>

@@ -64,19 +64,19 @@ const { title, description, pubDate, updatedDate, heroImage, tags } = Astro.prop
                 margin-top: 1rem;
             }
             .tag-badge {
-                background-color: #f4f4f4;
-                color: #0070f3;
+                background-color: var(--bg-card);
+                color: var(--green-light);
                 padding: 0.2rem 0.6rem;
                 border-radius: 4px;
                 font-size: 0.85rem;
-                border: 1px solid #ddd;
+                border: 1px solid var(--border);
                 text-decoration: none;
                 cursor: pointer;
                 transition: background-color 0.2s;
             }
             .tag-badge:hover {
-                background-color: #e8f0fe;
-                border-color: #0070f3;
+                background-color: var(--green);
+                border-color: var(--green-light);
             }
         </style>
     </head>

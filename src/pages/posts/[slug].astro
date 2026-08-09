@@ -69,7 +69,7 @@ const heroImage = pageData?.data?.heroImage;
       }
 
       .tags-container { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; }
-      .tag-badge { background: #f0f0f0; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; color: #0070f3; text-decoration: none; border: 1px solid #e0e0e0; }
+      .tag-badge { background: var(--bg-card); padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; color: var(--green-bright); text-decoration: none; border: 1px solid var(--border); }
       
       /* アイキャッチ画像：アスペクト比を保ちつつスマホに最適化 */
       .hero-image { 
@@ -79,7 +79,7 @@ const heroImage = pageData?.data?.heroImage;
         object-fit: cover; 
         border-radius: 12px; 
         margin: 1.5rem 0; 
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4); 
       }
 
       /* 【追加】スマホ用の微調整（画面幅600px以下） */

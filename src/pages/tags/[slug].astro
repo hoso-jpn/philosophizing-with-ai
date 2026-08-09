@@ -27,10 +27,10 @@ const posts = allPosts.filter((post) => post.tags.includes(tag));
         {posts.length > 0 ? (
           <ul style="padding: 0;">
             {posts.map((post) => (
-              <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid #f4f4f4; padding-bottom: 1rem;">
-                <div style="font-size: 0.9rem; color: #888;">{post.date}</div>
+              <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
+                <div style="font-size: 0.9rem; color: var(--text-muted);">{post.date}</div>
                 <a href={`/posts/${post.slug || post.id}`} style="text-decoration: none;">
-                  <h2 style="margin: 0; font-size: 1.4rem; color: #0070f3;">{post.title}</h2>
+                  <h2 style="margin: 0; font-size: 1.4rem; color: var(--green-bright);">{post.title}</h2>
                 </a>
               </li>
             ))}
