@@ -48,6 +48,16 @@ Vercel（@astrojs/vercel アダプタ）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
 
+毎ビルド、成否にかかわらず取得件数と下限を1行出力する。
+
+```text
+[notion] 15 posts fetched (floor: 13)
+```
+
+> **運用**: 記事を数本追加したら `src/lib/env.ts` の `MIN_EXPECTED_POSTS` の
+> 既定値を上げること。上の行を見れば乖離に気づけるようにしてある。
+> 一時的に下回らせたいだけなら環境変数 `MIN_EXPECTED_POSTS` で上書きする。
+
 ## 記事の書き方
 
 1. Notion データベースに行を追加する
@@ -57,6 +67,8 @@ Vercel（@astrojs/vercel アダプタ）
    - 既知シリーズの表示順だけ `SERIES_DISPLAY_ORDER` で指定している
 3. `Title` `Slug` `Date` `Tags` `Content` を埋める
 4. `Published` にチェックを入れる
+
+記事を追加したら `MIN_EXPECTED_POSTS` の既定値の見直しも忘れないこと。
 
 本文フォーマットは現在 WordPress の Gutenberg HTML のみ。
 Markdown と Notion ページ本文への対応は進行中（Phase 4 / 5）。
@@ -81,8 +93,11 @@ npm run dev
 | コマンド | 内容 |
 |---|---|
 | `npm run dev` | 開発サーバ（localhost:4321） |
-| `npm run build` | 本番ビルド |
+| `npm run build` | 型チェック（`astro check`）→ 本番ビルド |
+| `npm run typecheck` | 型チェックのみ |
 | `npm test` | ユニットテスト（`node:test`） |
+
+型エラーがあるとビルドは失敗する。「失敗は失敗として見せる」方針に合わせている。
 
 ## デプロイ
 

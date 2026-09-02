@@ -74,6 +74,9 @@ export async function getPosts(): Promise<Post[]> {
   reportWarnings(warnings);
 
   const minimum = getMinExpectedPosts();
+  // 成否にかかわらず必ず出す。下限が実態から乖離していることに気づけるようにするため
+  console.log(`[notion] ${posts.length} posts fetched (floor: ${minimum})`);
+
   if (posts.length === 0) {
     throw new Error(
       'Notion から公開記事を 1 件も取得できませんでした。' +
