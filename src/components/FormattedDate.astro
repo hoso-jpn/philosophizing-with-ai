@@ -1,16 +1,21 @@
 ---
+/**
+ * サイト全体の日付表示をここに集約する。
+ * 以前は /tags/[slug] だけが整形せず生の ISO 文字列を出していた。
+ */
 interface Props {
-	date: Date;
+	date: Date | string;
 }
 
 const { date } = Astro.props;
+const value = date instanceof Date ? date : new Date(date);
 ---
 
-<time datetime={date.toISOString()}>
+<time datetime={value.toISOString()}>
 	{
-		date.toLocaleDateString('en-us', {
+		value.toLocaleDateString('ja-JP', {
 			year: 'numeric',
-			month: 'short',
+			month: 'long',
 			day: 'numeric',
 		})
 	}

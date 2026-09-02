@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getPostsForSitemap } from '../lib/notion';
+import { getPosts } from '../lib/notion';
 import { getSlugFromTag } from '../lib/tag-slugs';
 
 // 💡 これにより、ビルド時にNotionからデータを取得し、静的なsitemap.xmlが生成されるようになります
@@ -17,7 +17,7 @@ const staticPages: SitemapEntry[] = [
 
 export const GET: APIRoute = async () => {
     // 1. Notionから記事一覧を取得（ビルド時に1度だけ実行されます）
-    const posts = await getPostsForSitemap();
+    const posts = await getPosts();
 
     // 2. 記事ページのURLエントリーを生成
     const postEntries: SitemapEntry[] = posts.map((post) => ({

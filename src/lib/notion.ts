@@ -1,217 +1,104 @@
-import { saveImageLocally } from './download-image';
+import { getMinExpectedPosts, getNotionApiKey, getNotionDatabaseId } from './env.ts';
+import { parsePost, type ParseWarning } from './notion-schema.ts';
+import { saveImageLocally } from './download-image.ts';
+import type { Post } from './types.ts';
 
-function extractTags(tagsProp: any): string[] {
-  if (!tagsProp) return [];
-  if (Array.isArray(tagsProp.multi_select)) {
-    return tagsProp.multi_select.map((tag: any) => tag?.name).filter(Boolean);
+const NOTION_VERSION = '2022-06-28';
+
+/**
+ * Notion API 呼び出し。
+ * 失敗を握り潰さず必ず投げる。以前は catch して [] を返していたため、
+ * トークン失効も API 障害も「記事0本のサイト」として正常終了していた。
+ */
+async function notionFetch(path: string, body?: unknown): Promise<any> {
+  const response = await fetch(`https://api.notion.com/v1/${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      Authorization: `Bearer ${getNotionApiKey()}`,
+      'Notion-Version': NOTION_VERSION,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(
+      `Notion API への ${path} が失敗しました: ${response.status} ${response.statusText}\n${detail.slice(0, 500)}`,
+    );
   }
-  if (Array.isArray(tagsProp.rich_text) && tagsProp.rich_text.length > 0) {
-    const text = tagsProp.rich_text[0]?.plain_text;
-    if (typeof text === 'string') {
-      return text.split(/[、, ]/).map((s: string) => s.trim()).filter(Boolean);
-    }
-  }
-  return [];
+  return response.json();
 }
 
-// Notion 側に明示的な Series プロパティがある場合のみ値を返す（無ければ null）
-function extractSeries(seriesProp: any): string | null {
-  if (!seriesProp) return null;
-  const value =
-    seriesProp.select?.name ??
-    seriesProp.multi_select?.[0]?.name ??
-    seriesProp.rich_text?.[0]?.plain_text ??
-    null;
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+/** ページネーションを辿って全件取得する */
+async function queryDatabase(filter?: unknown, sorts?: unknown): Promise<unknown[]> {
+  const databaseId = getNotionDatabaseId();
+  const results: unknown[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const page = await notionFetch(`databases/${databaseId}/query`, {
+      filter,
+      sorts,
+      page_size: 100,
+      start_cursor: cursor,
+    });
+    results.push(...(page.results ?? []));
+    cursor = page.has_more ? page.next_cursor : undefined;
+  } while (cursor);
+
+  return results;
 }
 
-// 1. 記事一覧を取得する関数
-export async function getPosts() {
-  const auth = process.env.NOTION_API_KEY;
-  const databaseId = process.env.NOTION_DATABASE_ID;
-
-  try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filter: { property: "Published", checkbox: { equals: true } },
-        sorts: [{ property: "Date", direction: "ascending" }],
-      }),
-    });
-
-    if (!response.ok) return [];
-    const data = await response.json();
-
-    return await Promise.all(data.results.map(async (page: any) => {
-      const props = page.properties || {};
-      
-      // タイトル結合
-      const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
-      const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
-      const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
-
-      const tags = extractTags(props.Tags || props["タグ"]);
-
-      // 画像保存
-      const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
-      let finalHeroImage = rawHeroImage;
-      if (rawHeroImage) {
-        finalHeroImage = await saveImageLocally(rawHeroImage, page.id);
-      }
-
-      return {
-        id: page.id,
-        title: combinedTitle,
-        titlePrefix: namePrefix, // シリーズ判定用（例: "AIと実装01"）
-        series: extractSeries(props.Series || props["シリーズ"]),
-        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
-        date: props.Date?.date?.start || "",
-        description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: tags, // 修正後のタグを反映
-        heroImage: finalHeroImage,
-      };
-    }));
-  } catch (error) {
-    console.error("getPosts 通信エラー:", error);
-    return [];
-  }
+function reportWarnings(warnings: ParseWarning[]): void {
+  for (const w of warnings) console.warn(`[notion] ${w.slug}: ${w.message}`);
 }
 
-// 2. 記事の詳細を取得する関数
-export async function getPostPage(pageId: string) {
-  const auth = process.env.NOTION_API_KEY;
-  try {
-    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-      },
-    });
-    if (!response.ok) return null;
-
-    const page = await response.json();
-    const props = page.properties || {};
-
-    const namePrefix = props["名前"]?.title?.[0]?.plain_text || "";
-    const titleText = props.Title?.rich_text?.[0]?.plain_text || "";
-    const combinedTitle = (namePrefix && titleText) ? `${namePrefix}；${titleText}` : (titleText || namePrefix || "無題");
-
-    const tags = extractTags(props.Tags || props["タグ"]);
-
-    const rawHeroImage = props.HeroImage?.files?.[0]?.file?.url || props.HeroImage?.files?.[0]?.external?.url || null;
-    let finalHeroImage = rawHeroImage;
-    if (rawHeroImage) {
-      finalHeroImage = await saveImageLocally(rawHeroImage, page.id);
-    }
-
-    return {
-      ...page,
-      data: {
-        title: combinedTitle,
-        pubDate: props.Date?.date?.start ? new Date(props.Date.date.start) : new Date(),
-        description: props.Description?.rich_text?.[0]?.plain_text || "",
-        tags: tags,
-        heroImage: finalHeroImage,
-      }
-    };
-  } catch (error) {
-    console.error("getPostPage 通信エラー:", error);
-    return null;
-  }
+async function attachHeroImage(post: Post): Promise<Post> {
+  if (!post.heroImage) return post;
+  return { ...post, heroImage: await saveImageLocally(post.heroImage, post.id) };
 }
 
-// 4. slug から Notion ページ ID を取得
-export async function getPostIdBySlug(slug: string): Promise<string | null> {
-  const auth = process.env.NOTION_API_KEY;
-  const databaseId = process.env.NOTION_DATABASE_ID;
+const publishedFilter = { property: 'Published', checkbox: { equals: true } };
+const dateAscending = [{ property: 'Date', direction: 'ascending' }];
 
-  try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filter: {
-          and: [
-            { property: "Published", checkbox: { equals: true } },
-            { property: "Slug", rich_text: { equals: slug } },
-          ],
-        },
-        page_size: 1,
-      }),
-    });
+/**
+ * 公開記事を公開日の昇順で取得する。
+ * 0 件、または想定を大きく下回る件数だった場合は例外にしてビルドを止める。
+ */
+export async function getPosts(): Promise<Post[]> {
+  const rows = await queryDatabase(publishedFilter, dateAscending);
 
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (!data.results || data.results.length === 0) return null;
-    return data.results[0].id as string;
-  } catch {
-    return null;
+  const warnings: ParseWarning[] = [];
+  const posts = rows.map((row) => parsePost(row, warnings));
+  reportWarnings(warnings);
+
+  const minimum = getMinExpectedPosts();
+  if (posts.length === 0) {
+    throw new Error(
+      'Notion から公開記事を 1 件も取得できませんでした。' +
+        'Published にチェックの入った記事があるか、認証情報が有効かを確認してください。',
+    );
   }
+  if (posts.length < minimum) {
+    throw new Error(
+      `公開記事が ${posts.length} 件しかありません（下限 ${minimum} 件）。` +
+        '意図的に記事を減らした場合は環境変数 MIN_EXPECTED_POSTS で下限を調整してください。',
+    );
+  }
+
+  return Promise.all(posts.map(attachHeroImage));
 }
 
-// 5. サイトマップ用: 画像ダウンロードなしで id / slug / tags / date のみ取得
-export async function getPostsForSitemap(): Promise<{ id: string; slug: string; tags: string[]; date: string }[]> {
-  const auth = process.env.NOTION_API_KEY;
-  const databaseId = process.env.NOTION_DATABASE_ID;
+/** slug から公開記事を 1 件取得する。無ければ null */
+export async function getPostBySlug(slug: string): Promise<Post | null> {
+  const rows = await queryDatabase({
+    and: [publishedFilter, { property: 'Slug', rich_text: { equals: slug } }],
+  });
+  if (rows.length === 0) return null;
 
-  try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filter: { property: "Published", checkbox: { equals: true } },
-      }),
-    });
-
-    if (!response.ok) return [];
-    const data = await response.json();
-
-    return data.results.map((page: any) => {
-      const props = page.properties || {};
-
-      const tags = extractTags(props.Tags || props["タグ"]);
-
-      return {
-        id: page.id,
-        slug: props.Slug?.rich_text?.[0]?.plain_text || "",
-        tags,
-        date: props.Date?.date?.start || "",
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
-// 3. 本文を取得（変更なし）
-export async function getPostContent(pageId: string) {
-  const auth = process.env.NOTION_API_KEY;
-  try {
-    const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${auth}`,
-        'Notion-Version': '2022-06-28',
-      },
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.results;
-  } catch (error) {
-    return [];
-  }
+  const warnings: ParseWarning[] = [];
+  const post = parsePost(rows[0], warnings);
+  reportWarnings(warnings);
+  return attachHeroImage(post);
 }

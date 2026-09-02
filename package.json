@@ -1,5 +1,5 @@
 {
-  "name": "my-blog",
+  "name": "philosophizing-with-ai",
   "type": "module",
   "version": "0.0.1",
   "engines": {
@@ -16,12 +16,10 @@
   "dependencies": {
     "@astrojs/mdx": "^5.0.0",
     "@astrojs/rss": "^4.0.17",
-    "@astrojs/sitemap": "^3.7.3",
     "@astrojs/vercel": "^10.0.7",
-    "@notionhq/client": "^5.12.0",
     "astro": "^6.0.4",
-    "axios": "^1.13.6",
     "marked": "^17.0.4",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "zod": "^4.5.4"
   }
 }

@@ -5,6 +5,7 @@ import Footer from '../../components/Footer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../../consts';
 import { getPosts } from '../../lib/notion';
 import { getTagFromSlug } from '../../lib/tag-slugs';
+import FormattedDate from '../../components/FormattedDate.astro';
 
 const { slug } = Astro.params;
 const tag = getTagFromSlug(slug as string) ?? decodeURIComponent(slug as string);
@@ -28,7 +29,7 @@ const posts = allPosts.filter((post) => post.tags.includes(tag));
           <ul style="padding: 0;">
             {posts.map((post) => (
               <li style="margin-bottom: 2rem; list-style: none; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
-                <div style="font-size: 0.9rem; color: var(--text-muted);">{post.date}</div>
+                <div style="font-size: 0.9rem; color: var(--text-muted);"><FormattedDate date={post.date} /></div>
                 <a href={`/posts/${post.slug || post.id}`} style="text-decoration: none;">
                   <h2 style="margin: 0; font-size: 1.4rem; color: var(--green-bright);">{post.title}</h2>
                 </a>

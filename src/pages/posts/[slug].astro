@@ -1,5 +1,5 @@
 ---
-import { getPostIdBySlug, getPostPage } from '../../lib/notion';
+import { getPostBySlug } from '../../lib/notion';
 import { getSlugFromTag } from '../../lib/tag-slugs';
 import { marked } from 'marked';
 import BaseHead from '../../components/BaseHead.astro';
@@ -8,32 +8,19 @@ import Footer from '../../components/Footer.astro';
 
 const { slug } = Astro.params;
 
-const id = await getPostIdBySlug(slug as string);
-if (!id) return new Response("Not found", { status: 404 });
+// 記事が無ければ 404。以前は取得失敗も「本文がありません。」として 200 を返していた
+const post = await getPostBySlug(slug as string);
+if (!post) return new Response('Not found', { status: 404 });
 
-// 詳細データを取得
-const pageData = await getPostPage(id);
-
-// --- 徹底した安全策 ---
-// 1. 本文の取得
-const contentRichText = pageData?.properties?.Content?.rich_text || [];
-const markdownContent = contentRichText.map((t: any) => t.plain_text).join('') || "本文がありません。";
-const htmlContent = marked(markdownContent);
-
-// 2. タイトルの取得
-const title = pageData?.data?.title || "無題";
-
-// 3. タグの取得
-const tags = pageData?.data?.tags || [];
-
-// 4. 画像の取得 (notion.tsで取得したパスを使用)
-const heroImage = pageData?.data?.heroImage;
+// 本文の変換は Phase 4 でフォーマット層に置き換える
+const htmlContent = marked(post.content);
+const { title, tags, heroImage } = post;
 ---
 
 <html lang="ja">
   <head>
     <BaseHead title={title} description="" />
-    <style is:global>
+    <style>
       /* メインコンテナ：スマホでの「横切れ」を防止 */
       main { 
         width: 100%; 
@@ -61,9 +48,9 @@ const heroImage = pageData?.data?.heroImage;
       }
       
       /* 本文内の画像やコードブロックがはみ出さないように */
-      .notion-content img, 
-      .notion-content video, 
-      .notion-content pre {
+      .notion-content :global(img),
+      .notion-content :global(video),
+      .notion-content :global(pre) {
         max-width: 100%;
         height: auto;
       }
