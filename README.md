@@ -3,6 +3,11 @@
 [blog.florigen.ai](https://blog.florigen.ai) のソース。
 Astro + Notion + Vercel で動く個人ブログ。
 
+> **この README の記述は 2026-09-03 にコードと突き合わせて検証済み。**
+> 実装の記憶から書いた誤りが実際に見つかったため（`MIN_EXPECTED_POSTS` の既定値、
+> `Status` の参照有無など）、以後も「〜していない」「〜のみ」といった否定形・限定形の
+> 断定を書くときは `grep` で裏を取ること。裏が取れないものは「未検証」と明記する。
+
 ## アーキテクチャ
 
 ```text
@@ -30,11 +35,12 @@ Vercel（@astrojs/vercel アダプタ）
 | `Tags` | rich_text | ✅ | 読点・カンマ・空白区切り |
 | `Description` | rich_text | | 記事概要。未設定なら警告のみ |
 | `HeroImage` | files | | アイキャッチ |
-| `Status` | rich_text | | `publish` / `draft` / 空。**現状コードは参照していない** |
 
 ※ `名前` と `Title` はどちらか一方が埋まっていればよい。
 
-`Published` と `Status` は現状ずれている行がある（公開判定は `Published` が正）。
+> `Status` 列（`publish` / `draft` の自由入力）は **2026-09-03 に廃止**した。
+> `Published` と実態がずれる行があり、二重管理になっていたため。
+> **公開判定は `Published` だけを見る。**
 
 ### 検証とビルドの失敗条件
 
@@ -43,16 +49,20 @@ Vercel（@astrojs/vercel アダプタ）
 
 - 必須プロパティの欠落・型違い（Notion 側でプロパティ名を変えた場合を含む）
 - `Slug` / `Date` / `Content` が空
-- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 10）を下回る
+- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
 - `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
 
-毎ビルド、成否にかかわらず取得件数と下限を1行出力する。
+Notion から記事を取得できたら、**件数チェックの成否にかかわらず**取得件数と下限を
+1行出力する（下限が実態から乖離していることに気づけるようにするため）。
 
 ```text
 [notion] 15 posts fetched (floor: 13)
 ```
+
+認証失敗や API 障害では `notionFetch` がこの行より前に例外を投げるので、
+この行は出ない。**出ていないこと自体が「取得に到達していない」の合図**になる。
 
 > **運用**: 記事を数本追加したら `src/lib/env.ts` の `MIN_EXPECTED_POSTS` の
 > 既定値を上げること。上の行を見れば乖離に気づけるようにしてある。
@@ -70,8 +80,12 @@ Vercel（@astrojs/vercel アダプタ）
 
 記事を追加したら `MIN_EXPECTED_POSTS` の既定値の見直しも忘れないこと。
 
-本文フォーマットは現在 WordPress の Gutenberg HTML のみ。
-Markdown と Notion ページ本文への対応は進行中（Phase 4 / 5）。
+`Content` に入っている実データは現在 WordPress の Gutenberg HTML のみ。
+ただし描画は `src/pages/posts/[slug].astro` で `marked(post.content)` を通しており、
+**marked は生 HTML を素通しし Markdown も解釈する**ため、Markdown を書いても描画はされる。
+
+未実装なのは描画そのものではなく**フォーマットの判定層**で、`Format` プロパティを
+見て変換を切り替える処理が Phase 4 の対象（Notion ページ本文への対応は Phase 5）。
 
 日本語タグを英語 slug に変換するマッピングは `src/lib/tag-slugs.ts` にある。
 未登録のタグは URL エンコードされた日本語 slug になる。
@@ -80,7 +94,7 @@ Markdown と Notion ページ本文への対応は進行中（Phase 4 / 5）。
 
 ```sh
 npm install
-vercel env pull .env --environment=development   # NOTION_API_KEY / NOTION_DATABASE_ID
+vercel env pull .env --environment=development   # NOTION_API_KEY / NOTION_DATABASE_ID / VERCEL_OIDC_TOKEN
 npm run dev
 ```
 
@@ -138,6 +152,12 @@ Hobby でも Pro でも同じ。壊れた記事が本番に出ることはない
 切ると取り下げた記事がサイトに残り続ける。
 
 スキップ・起動のどちらでもログが 1 行残る。
+
+> **未検証（実イベント待ち）**: `updated_properties` は**プロパティIDの文字列配列**で届き
+> （公式サンプル `["XGe%40","bDf%5B","DbAu"]`）、照合に使う `Published` の ID は
+> REST API（`2022-06-28`）から読む。系統が違うため表記が一致するかは断定できない。
+> 初回イベントのログ `[published_prop=... updated=...]` で突き合わせて確認する。
+> 一致しない場合に影響するのは「取り下げ」の検知だけで、公開記事の更新には影響しない。
 
 ```text
 [webhook] skip: ai-and-philosophy-13 is not published (page.content_updated)
@@ -205,6 +225,7 @@ src/
 ├── lib/
 │   ├── notion.ts         Notion API との通信
 │   ├── notion-schema.ts  応答の検証と Post への正規化
+│   ├── env.ts            環境変数の読み出しと MIN_EXPECTED_POSTS
 │   ├── types.ts          Post 型
 │   ├── series.ts         シリーズ判定
 │   ├── webhook-events.ts webhook イベントの振り分け

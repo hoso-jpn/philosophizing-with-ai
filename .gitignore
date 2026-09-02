@@ -26,3 +26,5 @@ pnpm-debug.log*
 
 # Notionの画像キャッシュを除外
 public/notion-static/
+.vercel
+.env*
