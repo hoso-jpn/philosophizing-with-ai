@@ -42,7 +42,6 @@ const requiredProperties = z.object({
 const optionalProperties = z.object({
   Description: richTextProp.optional(),
   HeroImage: filesProp.optional(),
-  Status: richTextProp.optional(),
   /** Phase 4 で使う。Notion 側に追加されるまでは存在しない */
   Format: z.union([z.object({ select: z.object({ name: z.string() }).nullable() }), richTextProp]).optional(),
 });
@@ -141,6 +140,5 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
     heroImage,
     content,
     published: props.Published.checkbox,
-    status: plain(props.Status?.rich_text ?? []).trim(),
   };
 }

@@ -25,6 +25,4 @@ export type Post = {
   /** 本文の生テキスト。フォーマットは Phase 4 で判定する */
   content: string;
   published: boolean;
-  /** Notion の Status（rich_text の自由入力）。現状 publish / draft / 空 */
-  status: string;
 };

@@ -18,7 +18,6 @@ function page(overrides: Record<string, unknown> = {}, id = 'page-1') {
       Tags: rt('LLM、GPU MoE'),
       Description: rt('概要です'),
       HeroImage: { files: [{ file: { url: 'https://example.com/a.png' } }] },
-      Status: rt('publish'),
       ...overrides,
     },
   };
@@ -36,7 +35,6 @@ describe('parsePost: 正常系', () => {
     assert.equal(post.description, '概要です');
     assert.equal(post.heroImage, 'https://example.com/a.png');
     assert.equal(post.published, true);
-    assert.equal(post.status, 'publish');
   });
 
   it('タグを既存と同じ区切り（読点・カンマ・空白）で分割する', () => {
@@ -109,9 +107,15 @@ describe('parsePost: 任意項目は警告に留める', () => {
     assert.ok(warnings.some((w) => w.message.includes('Tags')));
   });
 
-  it('HeroImage / Status が無くても失敗しない', () => {
-    const post = parsePost(page({ HeroImage: undefined, Status: undefined }));
+  it('HeroImage が無くても失敗しない', () => {
+    const post = parsePost(page({ HeroImage: undefined }));
     assert.equal(post.heroImage, null);
-    assert.equal(post.status, '');
+  });
+
+  it('スキーマが知らないプロパティが増えても壊れない', () => {
+    // Notion 側で列を足しても（Phase 4 の Format など）ビルドは通る。
+    // 逆に列を消しても、必須でなければ通る（Status 列の削除がこれに当たる）。
+    const post = parsePost(page({ 未知の列: rt('なにか') }));
+    assert.equal(post.slug, 'rtx-5090');
   });
 });
