@@ -105,7 +105,7 @@ const heroImage = pageData?.data?.heroImage;
         {tags.length > 0 && (
           <div class="tags-container">
             {tags.map((tag: string) => (
-              <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-badge">#{tag}</a>
+              <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-badge">{tag}</a>
             ))}
           </div>
         )}

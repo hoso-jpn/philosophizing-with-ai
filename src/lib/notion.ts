@@ -14,6 +14,17 @@ function extractTags(tagsProp: any): string[] {
   return [];
 }
 
+// Notion 側に明示的な Series プロパティがある場合のみ値を返す（無ければ null）
+function extractSeries(seriesProp: any): string | null {
+  if (!seriesProp) return null;
+  const value =
+    seriesProp.select?.name ??
+    seriesProp.multi_select?.[0]?.name ??
+    seriesProp.rich_text?.[0]?.plain_text ??
+    null;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 // 1. 記事一覧を取得する関数
 export async function getPosts() {
   const auth = process.env.NOTION_API_KEY;
@@ -56,6 +67,8 @@ export async function getPosts() {
       return {
         id: page.id,
         title: combinedTitle,
+        titlePrefix: namePrefix, // シリーズ判定用（例: "AIと実装01"）
+        series: extractSeries(props.Series || props["シリーズ"]),
         slug: props.Slug?.rich_text?.[0]?.plain_text || "",
         date: props.Date?.date?.start || "",
         description: props.Description?.rich_text?.[0]?.plain_text || "",

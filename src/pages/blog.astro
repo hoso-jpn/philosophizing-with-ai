@@ -57,7 +57,7 @@ const posts = await getPosts();
                         {tags.map((tag: string) => (
                           <a href={`/tags/${getSlugFromTag(tag)}`} style="text-decoration: none;">
                             <span style="background: var(--bg-card); padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; color: var(--green-light); border: 1px solid var(--border);">
-                              #{tag}
+                              {tag}
                             </span>
                           </a>
                         ))}

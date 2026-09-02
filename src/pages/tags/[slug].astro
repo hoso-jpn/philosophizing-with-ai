@@ -21,7 +21,7 @@ const posts = allPosts.filter((post) => post.tags.includes(tag));
     <Header />
     <main>
       <section style="max-width: 720px; margin: auto; padding: 1em;">
-        <h1>#{tag} の記事一覧</h1>
+        <h1>{tag} の記事一覧</h1>
         <a href="/">← 全ての記事に戻る</a>
         <hr />
         {posts.length > 0 ? (

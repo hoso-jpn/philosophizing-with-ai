@@ -5,6 +5,7 @@ import Footer from '../components/Footer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
 import { getPosts } from '../lib/notion';
 import { getSlugFromTag } from '../lib/tag-slugs';
+import { groupPostsBySeries } from '../lib/series';
 
 const posts = await getPosts();
 
@@ -29,16 +30,9 @@ const sortedTags = Object.entries(tagCounts)
   .sort(([, a], [, b]) => b - a);
 
 // 2. シリーズ（カテゴリ）ごとに分類
-const series = [
-  { name: 'AIと哲学', pattern: /AIと哲学/ },
-  { name: 'AIと生物学', pattern: /AIと生物学/ },
-  { name: 'AIと統計学', pattern: /AIと統計学/ },
-];
-
-const postsBySeries = series.map(s => ({
-  name: s.name,
-  posts: posts.filter(p => s.pattern.test(p.title))
-}));
+// シリーズ名は記事側（Notion の Series / 「名前」プロパティ）から導出するため、
+// 新しい「AIと◯◯」シリーズが増えてもこのファイルの変更は不要。
+const postsBySeries = groupPostsBySeries(posts);
 
 // 3. 月別アーカイブの作成
 const postsByMonth = posts.reduce((acc, post) => {
@@ -133,7 +127,7 @@ const postsByMonth = posts.reduce((acc, post) => {
         <div class="tag-cloud">
           {sortedTags.map(([tag, count]) => (
             <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-item">
-              #{tag} <span class="tag-count">({count})</span>
+              {tag} <span class="tag-count">({count})</span>
             </a>
           ))}
         </div>
@@ -141,7 +135,7 @@ const postsByMonth = posts.reduce((acc, post) => {
 
       <section>
         <h2>シリーズ別</h2>
-        {postsBySeries.map(s => s.posts.length > 0 && (
+        {postsBySeries.map(s => (
           <div style="margin-bottom: 2rem;">
             <h3 style="font-size: 1.2rem; color: var(--text-muted); margin-bottom: 1rem;">{s.name}</h3>
             <ul class="archive-list">
