@@ -54,9 +54,25 @@ function reportWarnings(warnings: ParseWarning[]): void {
   for (const w of warnings) console.warn(`[notion] ${w.slug}: ${w.message}`);
 }
 
-async function attachHeroImage(post: Post): Promise<Post> {
+/**
+ * 外部を指している画像をローカルへ取り込む。
+ *
+ * HeroImage は署名付き S3 URL で有効期限が 1 時間（2026-09-03 実測）。
+ * SSR の間は毎リクエスト取り直していたので露見しなかったが、SSG 化すると
+ * URL がビルド時に HTML へ焼き込まれ、1 時間後に画像が全滅する。
+ *
+ * 本文画像のローカル化（localizeContentImages）は **まだ繋いでいない**。
+ * 唯一の本文画像 functionalism-of-intelligence の「ホソヘリ2齢-1024x768.jpg」は
+ * 旧ドメイン philosophizing-with-ai.com にあるが、そのドメインは既に停止しており
+ * （root=403 / 当該画像=404 / Wayback にスナップショット無し。2026-09-03 実測）、
+ * 取得元が存在しない。繋ぐとビルドが必ず失敗する。
+ *
+ * この画像は本番サイトで既に壊れており、SSG 化で悪化はしない。
+ * 差し替えか削除かが決まったら localizeContentImages を下に足すこと。
+ */
+async function localizeImages(post: Post): Promise<Post> {
   if (!post.heroImage) return post;
-  return { ...post, heroImage: await saveImageLocally(post.heroImage, post.id) };
+  return { ...post, heroImage: await saveImageLocally(post.heroImage, post.slug) };
 }
 
 const publishedFilter = { property: 'Published', checkbox: { equals: true } };
@@ -74,7 +90,8 @@ export async function getPosts(): Promise<Post[]> {
   reportWarnings(warnings);
 
   const minimum = getMinExpectedPosts();
-  // 成否にかかわらず必ず出す。下限が実態から乖離していることに気づけるようにするため
+  // 件数チェックの成否にかかわらず出す。下限が実態から乖離していることに気づけるようにするため。
+  // 取得自体が失敗した場合は notionFetch がここより前に投げるので、この行は出ない
   console.log(`[notion] ${posts.length} posts fetched (floor: ${minimum})`);
 
   if (posts.length === 0) {
@@ -90,7 +107,7 @@ export async function getPosts(): Promise<Post[]> {
     );
   }
 
-  return Promise.all(posts.map(attachHeroImage));
+  return Promise.all(posts.map(localizeImages));
 }
 
 /** webhook のフィルタに必要な最小限だけを読んだページの状態 */
@@ -138,5 +155,5 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   const warnings: ParseWarning[] = [];
   const post = parsePost(rows[0], warnings);
   reportWarnings(warnings);
-  return attachHeroImage(post);
+  return localizeImages(post);
 }

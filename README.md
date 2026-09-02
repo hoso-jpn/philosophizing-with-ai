@@ -3,6 +3,12 @@
 [blog.florigen.ai](https://blog.florigen.ai) のソース。
 Astro + Notion + Vercel で動く個人ブログ。
 
+> **決定ログ**: Phase の順序・購読イベント・公開判定の基準といった合意済みの決定は
+> [PR #1](https://github.com/hoso-jpn/philosophizing-with-ai/pull/1) の本文冒頭にある。
+> **作業を再開するときは、他のどこよりも先にそこを読むこと。**
+> 決定が会話の中にしか無く、合意済みの順序を後から再提案してしまったことがあるため。
+> Phase 2+3 のマージ時に `docs/decisions.md` へ移す。
+
 > **この README の記述は 2026-09-03 にコードと突き合わせて検証済み。**
 > 実装の記憶から書いた誤りが実際に見つかったため（`MIN_EXPECTED_POSTS` の既定値、
 > `Status` の参照有無など）、以後も「〜していない」「〜のみ」といった否定形・限定形の
