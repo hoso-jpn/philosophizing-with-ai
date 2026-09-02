@@ -105,6 +105,97 @@ npm run dev
 Notion の更新は `src/pages/api/notion-webhook.ts` が Vercel Deploy Hook を叩いて反映する
 （`VERCEL_DEPLOY_HOOK_URL` が必要）。
 
+### Vercel Hobby の制約
+
+| 項目 | Hobby |
+|---|---|
+| デプロイ作成数 | **100 回/日** |
+| 同時ビルド | **1 本** |
+| デプロイフックの起動 | **60 回/時**（プロジェクト単位・全フック合算） |
+| ビルド時間 | 45 分/デプロイ |
+
+ビルドが**失敗した場合、本番ドメインは直前の成功デプロイを配信し続ける**。
+Vercel のデプロイは不変（immutable）で、ドメインはポインタでしかなく、
+ビルドが成功して初めて本番エイリアスが張り替わる。これはプラン非依存で
+Hobby でも Pro でも同じ。壊れた記事が本番に出ることはない。
+
+### webhook のフィルタ
+
+上の枠は執筆中の自動保存で簡単に埋まるため、`notion-webhook.ts` は
+受信イベントを振り分けてから Deploy Hook を叩く。判定は `src/lib/webhook-events.ts`。
+
+| イベント | 挙動 |
+|---|---|
+| `page.created` / `content_updated` / `properties_updated` / `moved` / `deleted` / `undeleted` | 対象ページの `Published` を見る。**true ならビルド、false ならスキップ** |
+| `page.locked` / `page.unlocked` | スキップ（出力に影響しない） |
+| `data_source.schema_updated` | **ビルドする**。プロパティ名・型の変更は `notion-schema.ts` の検証を壊すので、変更直後にビルド失敗として気づきたい |
+| `data_source.content_updated` ほか | スキップ（`page.*` で同じ変更が届くため二重） |
+| `comment.*` | スキップ |
+| 未知の種別 | スキップ（枠を静かに食い潰さないため）。種別はログに出る |
+
+`Published` が false でも、そのイベントで `Published` プロパティ自体が変更されていれば
+ビルドする。**公開 → 非公開（取り下げ）も現在値は false になる**ため、現在値だけで
+切ると取り下げた記事がサイトに残り続ける。
+
+スキップ・起動のどちらでもログが 1 行残る。
+
+```text
+[webhook] skip: ai-and-philosophy-13 is not published (page.content_updated)
+[webhook] build: ai-and-philosophy-12 is published (page.properties_updated)
+[webhook] build: ai-and-philosophy-12 was unpublished (page.properties_updated)
+```
+
+応答は原則 200 を返す。Notion は 200 以外だと最大 8 回・約 24 時間リトライするため、
+「ビルドしないと決めた」ことをリトライで蒸し返させない。500 を返すのは
+Notion API 障害など、リトライで直る見込みがあるときだけ。
+
+### Notion 側の購読設定
+
+**URL は本番ドメインを直接指定する。**
+
+```text
+https://blog.florigen.ai/api/notion-webhook
+```
+
+`philosophizing-with-ai.vercel.app` を指すと Vercel が **308 で
+`blog.florigen.ai` へリダイレクトする**（カスタムドメインを primary にしたため）。
+webhook の配信元がリダイレクトを追う保証はないので、直接指定する。
+
+**購読するイベント種別（3 + 任意1）:**
+
+| イベント | 要否 | 理由 |
+|---|---|---|
+| `page.properties_updated` | **必須** | 本文（`Content`）・`Published`・`Title` などの編集。**この構成では実質これが主役** |
+| `page.deleted` | **必須** | 公開記事の削除をサイトへ反映する |
+| `page.undeleted` | **必須** | 復元を反映する |
+| `data_source.schema_updated` | 推奨 | プロパティ名・型の変更を、変更直後にビルド失敗として検知する |
+| `page.created` | 任意 | 新規行はほぼ下書きで、公開時に `properties_updated` が続く |
+| `page.content_updated` | **不要（今は）** | ページ**本文（ブロック）**専用。本文は `Content` プロパティにあり、ブロックはレンダリングしていない。**Phase 4/5 で Notion ページ本文へ対応したら必須になる** |
+| `page.moved` / `page.locked` / `page.unlocked` | 不要 | DB 間移動の運用があれば `moved` のみ検討 |
+| `data_source.content_updated` / `comment.*` | 購読しない | `page.*` と二重。コード側でも落とすが、届かせない方が枠に優しい |
+
+> **`page.content_updated` ではなく `page.properties_updated`** である点が重要。
+> Notion の定義は `content_updated` = 「ページのブロックの追加・削除」、
+> `properties_updated` = 「ページのプロパティの更新」。この構成では本文が
+> `Content` プロパティなので、執筆中の自動保存は `properties_updated` で飛ぶ。
+
+購読作成時、Notion は `{"verification_token": "..."}` を 1 度だけ POST する。
+その値は Vercel のログに `[webhook] verification request received.` として出るので、
+Notion の画面へ貼り戻して検証を完了させる。
+
+### API バージョンについて
+
+2つのバージョンが**別系統**で動いていることに注意する。
+
+| | バージョン | 決めるもの |
+|---|---|---|
+| 受信（webhook のペイロード） | 購読側の設定（現在 `2026-03-11`） | `entity` / `data.updated_properties` の形 |
+| 送信（`src/lib/notion.ts` の REST 呼び出し） | `NOTION_VERSION = '2022-06-28'` | ページ取得・DB クエリの応答の形 |
+
+Notion は「古いバージョンのサポートを終了する予定は今のところ無い」としている。
+ただし `databases/{id}/query` は 2025-09-03 でデータソースへ移行済みのため、
+`NOTION_VERSION` を上げるときは `queryDatabase()` の書き換えが必要になる。
+
 ## ディレクトリ
 
 ```text
@@ -116,6 +207,7 @@ src/
 │   ├── notion-schema.ts  応答の検証と Post への正規化
 │   ├── types.ts          Post 型
 │   ├── series.ts         シリーズ判定
+│   ├── webhook-events.ts webhook イベントの振り分け
 │   ├── tag-slugs.ts      日本語タグ → 英語 slug
 │   └── download-image.ts 画像の恒久化（未実装）
 ├── pages/

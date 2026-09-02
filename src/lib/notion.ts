@@ -93,6 +93,41 @@ export async function getPosts(): Promise<Post[]> {
   return Promise.all(posts.map(attachHeroImage));
 }
 
+/** webhook のフィルタに必要な最小限だけを読んだページの状態 */
+export type PagePublishState = {
+  /** Published チェックボックスの現在値。プロパティが読めなければ null */
+  published: boolean | null;
+  /** ログ用。Slug が空ならページ ID を入れる */
+  slug: string;
+  /** Published プロパティの ID。updated_properties との突き合わせに使う */
+  publishedPropertyId: string | null;
+};
+
+/**
+ * ページ 1 件の公開状態だけを取得する（webhook のフィルタ用）。
+ *
+ * parsePost は使わない。あれは「公開できる記事か」を検証するもので、Slug や
+ * Content が空なら例外を投げる。webhook が見に行くページは執筆途中の下書きが
+ * 大半で、それらは当然空なので、検証を通すと下書き保存のたびに 500 を返して
+ * Notion に 24 時間リトライさせることになる。ここは Published と Slug だけを緩く読む。
+ *
+ * 取得自体に失敗した場合は例外を投げる（呼び出し側で安全側に倒す）。
+ */
+export async function getPagePublishState(pageId: string): Promise<PagePublishState> {
+  const page = await notionFetch(`pages/${pageId}`);
+  const published = page?.properties?.Published;
+  const slug = (page?.properties?.Slug?.rich_text ?? [])
+    .map((t: { plain_text?: string }) => t?.plain_text ?? '')
+    .join('')
+    .trim();
+
+  return {
+    published: typeof published?.checkbox === 'boolean' ? published.checkbox : null,
+    slug: slug || pageId,
+    publishedPropertyId: typeof published?.id === 'string' ? published.id : null,
+  };
+}
+
 /** slug から公開記事を 1 件取得する。無ければ null */
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   const rows = await queryDatabase({
