@@ -55,16 +55,21 @@ Vercel（@astrojs/vercel アダプタ）
 
 - 必須プロパティの欠落・型違い（Notion 側でプロパティ名を変えた場合を含む）
 - `Slug` / `Date` / `Content` が空
-- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **14**、`src/lib/env.ts`）を下回る
+- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
 - `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
+- 本文が停止済みの旧ドメイン `philosophizing-with-ai.com` を参照している
+- 本文の `<img>` が**外部 URL**を指している（図は `public/images/` に置く。下記）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
+
+> 下の 2 つは **公開記事だけ**が対象。下書きは `Published` フィルタで取得されないため、
+> 作り直し待ちの下書きに旧ドメイン参照が残っていてもビルドは止まらない。
 
 Notion から記事を取得できたら、**件数チェックの成否にかかわらず**取得件数と下限を
 1行出力する（下限が実態から乖離していることに気づけるようにするため）。
 
 ```text
-[notion] 16 posts fetched (floor: 14)
+[notion] 15 posts fetched (floor: 13)
 ```
 
 認証失敗や API 障害では `notionFetch` がこの行より前に例外を投げるので、
@@ -107,11 +112,15 @@ Notion にアップロードした画像の URL は署名付きで 1 時間で�
 ```
 
 `/images/...` のようなサイト内パスはビルドのローカル化処理を素通りする
-（`src/lib/download-image.ts`）。外部 URL だけがダウンロード対象になる。
+（`src/lib/download-image.ts`）。
 
-> **旧ドメイン `philosophizing-with-ai.com` は停止済み**。本文がこのドメインを
-> 参照しているとビルドが失敗する（`assertNoLegacyDomainReference`）。
-> 画像は上の手順で差し替え、記事へのリンクは `/posts/<slug>/` に書き換える。
+**本文の `<img>` に外部 URL は書けない。** 書くとビルドが失敗する
+（`assertNoExternalContentImages`）。参照先が消えたり期限切れになっても
+ビルドは成功したままで、画像だけが後から壊れるため。旧ドメインの画像が実例。
+
+> **旧ドメイン `philosophizing-with-ai.com` は停止済み**（原本も残っていない）。
+> 本文がこのドメインを参照しているとビルドが失敗する
+> （`assertNoLegacyDomainReferences`）。記事へのリンクは `/posts/<slug>/` に書き換える。
 
 > これは暫定手段。**本命は Phase 5** で、本文を Notion のページ本文へ移せば
 > 画像は Notion の画像ブロックになり、ビルド時のパイプラインが解決する。

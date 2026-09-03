@@ -115,6 +115,10 @@ export function findLegacyDomainReferences(content: string): string[] {
  *
  * 記事ごとに投げず全記事をまとめて検査する。1 件ずつ落とすと「直す →
  * ビルド → 次が見つかる」を参照の数だけ繰り返すことになるため。
+ *
+ * 対象は **公開記事だけ**。下書きは getPosts の Published フィルタで
+ * そもそも取得されないので、ここへは渡ってこない。作り直し待ちの下書きに
+ * 旧ドメイン参照が残っていてもビルドは止まらない。
  */
 export function assertNoLegacyDomainReferences(posts: { slug: string; content: string }[]): void {
   const offenders = posts

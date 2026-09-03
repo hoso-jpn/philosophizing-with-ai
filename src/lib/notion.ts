@@ -1,6 +1,10 @@
 import { getMinExpectedPosts, getNotionApiKey, getNotionDatabaseId } from './env.ts';
 import { assertNoLegacyDomainReferences, parsePost, type ParseWarning } from './notion-schema.ts';
-import { saveImageLocally } from './download-image.ts';
+import {
+  assertNoExternalContentImages,
+  localizeContentImages,
+  saveImageLocally,
+} from './download-image.ts';
 import type { Post } from './types.ts';
 
 const NOTION_VERSION = '2022-06-28';
@@ -61,18 +65,17 @@ function reportWarnings(warnings: ParseWarning[]): void {
  * SSR の間は毎リクエスト取り直していたので露見しなかったが、SSG 化すると
  * URL がビルド時に HTML へ焼き込まれ、1 時間後に画像が全滅する。
  *
- * 本文画像のローカル化（localizeContentImages）は **まだ繋いでいない**。
- * 唯一の本文画像 functionalism-of-intelligence の「ホソヘリ2齢-1024x768.jpg」は
- * 旧ドメイン philosophizing-with-ai.com にあるが、そのドメインは既に停止しており
- * （root=403 / 当該画像=404 / Wayback にスナップショット無し。2026-09-03 実測）、
- * 取得元が存在しない。繋ぐとビルドが必ず失敗する。
- *
- * この画像は本番サイトで既に壊れており、SSG 化で悪化はしない。
- * 差し替えか削除かが決まったら localizeContentImages を下に足すこと。
+ * 本文画像は assertNoExternalContentImages が外部 URL を弾いたあとに通るので、
+ * localizeContentImages はサイト内パス（/images/...）を素通しするだけになる。
+ * ダウンロードが実際に働くのは Phase 5（本文を Notion のページ本文へ移し、
+ * 画像が Notion の画像ブロックになったとき）。
  */
 async function localizeImages(post: Post): Promise<Post> {
-  if (!post.heroImage) return post;
-  return { ...post, heroImage: await saveImageLocally(post.heroImage, post.slug) };
+  return {
+    ...post,
+    heroImage: post.heroImage ? await saveImageLocally(post.heroImage, post.slug) : null,
+    content: await localizeContentImages(post.content, post.slug),
+  };
 }
 
 const publishedFilter = { property: 'Published', checkbox: { equals: true } };
@@ -107,8 +110,10 @@ export async function getPosts(): Promise<Post[]> {
     );
   }
 
-  // 件数ログのあとに検査する。取得できた件数は先に見せたい
+  // 件数ログのあとに検査する。取得できた件数は先に見せたい。
+  // どちらも対象は公開記事だけ（下書きは上の Published フィルタで取得されない）
   assertNoLegacyDomainReferences(posts);
+  assertNoExternalContentImages(posts);
 
   return Promise.all(posts.map(localizeImages));
 }
