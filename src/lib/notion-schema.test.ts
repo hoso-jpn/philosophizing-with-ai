@@ -55,6 +55,13 @@ describe('parsePost: 正常系', () => {
     const post = parsePost(page({ HeroImage: { files: [{ external: { url: 'https://x/y.png' } }] } }));
     assert.equal(post.heroImage, 'https://x/y.png');
   });
+
+  it('rich_text が 25 断片以上でも本文として受け付ける', () => {
+    const many = { rich_text: Array.from({ length: 30 }, (_, i) => ({ plain_text: `断片${i}` })) };
+    const post = parsePost(page({ Content: many }));
+    assert.match(post.content, /断片0/);
+    assert.match(post.content, /断片29/);
+  });
 });
 
 describe('parsePost: 必須が欠けたら例外（静かに空文字にしない）', () => {
@@ -73,11 +80,6 @@ describe('parsePost: 必須が欠けたら例外（静かに空文字にしな�
       assert.throws(() => parsePost(page(override)), NotionSchemaError);
     });
   }
-
-  it('Content が 25 要素に達していたら切り捨てを疑って失敗する', () => {
-    const many = { rich_text: Array.from({ length: 25 }, () => ({ plain_text: 'x' })) };
-    assert.throws(() => parsePost(page({ Content: many })), /切り捨て/);
-  });
 
   it('エラーメッセージにページ ID と原因が入る', () => {
     assert.throws(
