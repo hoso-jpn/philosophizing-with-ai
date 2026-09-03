@@ -58,15 +58,6 @@ export const tagToSlug: Record<string, string> = {
   '知性効率':         'intelligence-efficiency',
 };
 
-// 英語スラグ → 日本語タグ（逆引き用）
-export const slugToTag: Record<string, string> = Object.fromEntries(
-  Object.entries(tagToSlug).map(([tag, slug]) => [slug, tag])
-);
-
 export function getSlugFromTag(tag: string): string {
   return tagToSlug[tag] ?? encodeURIComponent(tag);
-}
-
-export function getTagFromSlug(slug: string): string | null {
-  return slugToTag[slug] ?? null;
 }
