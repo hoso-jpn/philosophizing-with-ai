@@ -4,13 +4,30 @@ import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../../consts';
 import { getPosts } from '../../lib/notion';
-import { getTagFromSlug } from '../../lib/tag-slugs';
+import { getSlugFromTag } from '../../lib/tag-slugs';
+import type { Post } from '../../lib/types';
 import FormattedDate from '../../components/FormattedDate.astro';
 
-const { slug } = Astro.params;
-const tag = getTagFromSlug(slug as string) ?? decodeURIComponent(slug as string);
-const allPosts = await getPosts();
-const posts = allPosts.filter((post) => post.tags.includes(tag));
+// タグページもビルド時に全件生成する。
+// タグの一覧は記事から作るので、Notion 側でタグが増えてもコード変更は不要。
+export async function getStaticPaths() {
+  const allPosts = await getPosts();
+  const tags = [...new Set(allPosts.flatMap((post) => post.tags))];
+
+  return tags.map((tag) => ({
+    // params にはデコード済みの値を渡す（URL エンコードは Astro が出力時に行う）。
+    // 未登録タグの getSlugFromTag は encodeURIComponent 済みの文字列を返すため
+    // （例: 労働 → %E5%8A%B4%E5%83%8D）、そのまま渡すと生成パスとの突き合わせに
+    // 失敗して NoMatchingStaticPathFound になる。登録済みの ASCII slug は
+    // デコードしても変わらないので、両方これで通る。
+    params: { slug: decodeURIComponent(getSlugFromTag(tag)) },
+    props: { tag, posts: allPosts.filter((post) => post.tags.includes(tag)) },
+  }));
+}
+
+type Props = { tag: string; posts: Post[] };
+
+const { tag, posts } = Astro.props;
 ---
 
 <!doctype html>
