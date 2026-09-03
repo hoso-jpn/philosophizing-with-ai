@@ -1,42 +1,8 @@
-import { cp, stat } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
-/**
- * ビルド中にダウンロードした Notion の画像を出力へ入れる。
- *
- * Astro は `public/` を **ページ描画より前に**出力へコピーする。一方
- * src/lib/download-image.ts のダウンロードは getStaticPaths / ページ描画の
- * 最中に走るので、`public/notion-static/` へ落ちた時点ではコピーが済んでいる。
- * 何もしないと HTML は /notion-static/... を指しているのに実体が出力に無い、
- * という状態で「ビルドは成功しているのに画像だけ 404」になる。
- *
- * そこで描画後（astro:build:done）に出力ディレクトリへコピーし直す。
- */
-function copyDownloadedImages() {
-  const SOURCE = path.join(process.cwd(), 'public', 'notion-static');
-
-  return {
-    name: 'copy-downloaded-images',
-    hooks: {
-      'astro:build:done': async ({ dir, logger }) => {
-        try {
-          await stat(SOURCE);
-        } catch {
-          logger.info('notion-static: ダウンロード済みの画像なし');
-          return;
-        }
-        const destination = path.join(fileURLToPath(dir), 'notion-static');
-        await cp(SOURCE, destination, { recursive: true });
-        logger.info(`notion-static: ${destination} へコピーしました`);
-      },
-    },
-  };
-}
+import { assertNoRemoteImagesInOutput, copyDownloadedImages } from './astro-integrations.mjs';
 
 export default defineConfig({
     site: 'https://blog.florigen.ai',
@@ -44,9 +10,26 @@ export default defineConfig({
     // アダプタは残す。src/pages/api/notion-webhook.ts だけが prerender = false で
     // サーバ上に残り、Notion からの webhook を受ける。
     output: 'static',
+
+    // 現在インデックスされている本番 URL は **末尾スラッシュ無し**
+    // （実測: canonical = https://blog.florigen.ai/posts/determinism-free-will-ai）。
+    // 既定のまま SSG 化すると build.format='directory' が /posts/<slug>/ を生み、
+    // 全記事の URL が変わって検索評価を失う。
+    //
+    // trailingSlash: 'never'  … /posts/<slug>/ でのアクセスをスラッシュ無しへ寄せる
+    // build.format: 'file'    … <slug>/index.html ではなく <slug>.html を出力する
+    //
+    // 両方を指定しないと足りない。'never' だけでは出力ファイルの形が directory の
+    // ままで、ホスティング側がスラッシュ付きを正とみなす余地が残る。
+    trailingSlash: 'never',
+    build: {
+        format: 'file',
+    },
+
     integrations: [
         mdx(),
         copyDownloadedImages(),
+        assertNoRemoteImagesInOutput(),
     ],
     adapter: vercel(),
 });

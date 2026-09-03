@@ -87,10 +87,32 @@ const publishedFilter = { property: 'Published', checkbox: { equals: true } };
 const dateAscending = [{ property: 'Date', direction: 'ascending' }];
 
 /**
+ * 1 ビルド = 1 スナップショット。
+ *
+ * index / blog / posts/[slug] / tags/[slug] / rss / sitemap がそれぞれ getPosts を
+ * 呼ぶため、実測で 1 ビルドあたり 6 回 Notion を引いていた。回数そのものは
+ * レート制限に対して十分小さいが、**ビルドの最中に Notion が編集されると
+ * 一覧と個別ページで内容が食い違う**。性能ではなく一貫性のためにメモ化する。
+ *
+ * 解決済みの値ではなく Promise を持つので、並行呼び出しも 1 回にまとまる。
+ * 失敗した Promise もそのまま保持する（同じビルド内で結果が変わらない方がよい）。
+ *
+ * dev サーバーではメモ化しない。Notion を編集して再読み込みしても反映されなくなる。
+ */
+let postsSnapshot: Promise<Post[]> | null = null;
+const MEMOIZE = !import.meta.env?.DEV;
+
+export function getPosts(): Promise<Post[]> {
+  if (!MEMOIZE) return fetchPosts();
+  postsSnapshot ??= fetchPosts();
+  return postsSnapshot;
+}
+
+/**
  * 公開記事を公開日の昇順で取得する。
  * 0 件、または想定を大きく下回る件数だった場合は例外にしてビルドを止める。
  */
-export async function getPosts(): Promise<Post[]> {
+async function fetchPosts(): Promise<Post[]> {
   const rows = await queryDatabase(publishedFilter, dateAscending);
 
   const warnings: ParseWarning[] = [];

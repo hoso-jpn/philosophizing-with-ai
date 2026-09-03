@@ -12,7 +12,9 @@ export async function GET(context) {
 			title: post.title,
 			pubDate: post.date ? new Date(post.date) : new Date(),
 			description: post.description,
-			link: `/posts/${post.slug || post.id}/`,
+			// 末尾スラッシュを付けない。canonical / sitemap / 内部リンクはすべて
+			// スラッシュ無しで、ここだけ食い違っていた（trailingSlash: 'never' と揃える）
+			link: `/posts/${post.slug || post.id}`,
 		})),
 	});
 }
