@@ -111,11 +111,19 @@ export async function getPosts(): Promise<Post[]> {
   }
 
   // 件数ログのあとに検査する。取得できた件数は先に見せたい。
-  // どちらも対象は公開記事だけ（下書きは上の Published フィルタで取得されない）
+  // 対象は公開記事だけ（下書きは上の Published フィルタで取得されない）。
+  //
+  // 旧ドメインの検査はローカル化より前に置く。停止済みだと分かっているドメインには
+  // 「取得に失敗しました（404）」より「旧ドメインは停止済み。リンクは /posts/<slug>/ へ」
+  // の方が直すべきことを直接指すため。リンクはそもそもローカル化の対象外でもある。
   assertNoLegacyDomainReferences(posts);
-  assertNoExternalContentImages(posts);
 
-  return Promise.all(posts.map(localizeImages));
+  const localized = await Promise.all(posts.map(localizeImages));
+
+  // ローカル化を通したあとの事後条件。外部 URL が残っていたら実装の異常
+  assertNoExternalContentImages(localized);
+
+  return localized;
 }
 
 /** webhook のフィルタに必要な最小限だけを読んだページの状態 */

@@ -58,7 +58,7 @@ Vercel（@astrojs/vercel アダプタ）
 - 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
 - `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
 - 本文が停止済みの旧ドメイン `philosophizing-with-ai.com` を参照している
-- 本文の `<img>` が**外部 URL**を指している（図は `public/images/` に置く。下記）
+- 本文や HeroImage の**外部画像のダウンロードに失敗した**（404・拡張子が判別できない等）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
 
@@ -111,16 +111,30 @@ Notion にアップロードした画像の URL は署名付きで 1 時間で�
 <figure><img src="/images/ammi-biplot.png" alt="AMMI バイプロット"/></figure>
 ```
 
-`/images/...` のようなサイト内パスはビルドのローカル化処理を素通りする
+`/images/...` のようなサイト内パスは、ビルドのローカル化処理を素通りする
 （`src/lib/download-image.ts`）。
 
-**本文の `<img>` に外部 URL は書けない。** 書くとビルドが失敗する
-（`assertNoExternalContentImages`）。参照先が消えたり期限切れになっても
-ビルドは成功したままで、画像だけが後から壊れるため。旧ドメインの画像が実例。
+外部 URL の画像を書いた場合は、**ビルド時にダウンロードして `/notion-static/` へ
+取り込む**（＝ HTML には自分のサーバーのパスが残る）。取得に失敗したらビルドが失敗する。
+ただし外部ホストに依存しない `public/images/` 方式を推奨する。
+
+外部画像を複製したときは、ビルドログに 1 行残る。
+外部の画像を自分のサーバーへ複製する行為はホットリンクとは権利上の意味が違うため、
+黙って起きないようにしてある。
+
+```text
+[images] localized: https://example.com/foo.png → /notion-static/ab12cd34.png (slug)
+```
+
+> URL はクエリを落として出す。Notion の署名付き URL は `X-Amz-Signature` /
+> `X-Amz-Security-Token` を含み、ビルドログへ流すべきではないため。
+> 複製元の把握には origin + パスで足りる。
 
 > **旧ドメイン `philosophizing-with-ai.com` は停止済み**（原本も残っていない）。
 > 本文がこのドメインを参照しているとビルドが失敗する
-> （`assertNoLegacyDomainReferences`）。記事へのリンクは `/posts/<slug>/` に書き換える。
+> （`assertNoLegacyDomainReferences`）。この検査はローカル化より**前**に走る。
+> 停止済みと分かっているドメインには「取得に失敗しました（404）」より
+> 「旧ドメインは停止済み。リンクは `/posts/<slug>/` へ」の方が直すべきことを直接指すため。
 
 > これは暫定手段。**本命は Phase 5** で、本文を Notion のページ本文へ移せば
 > 画像は Notion の画像ブロックになり、ビルド時のパイプラインが解決する。

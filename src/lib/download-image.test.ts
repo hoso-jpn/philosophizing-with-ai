@@ -71,33 +71,36 @@ describe('localizeContentImages — ローカル画像を含む本文', () => {
   });
 });
 
-describe('assertNoExternalContentImages — 本文の外部画像はビルドを止める', () => {
-  const local = '<figure><img src="/images/ammi-biplot.png" alt="AMMI"/></figure>';
-  const legacy = '<img src="https://philosophizing-with-ai.com/wp-content/uploads/a.jpg"/>';
-  const notionS3 = '<img src="https://prod-files-secure.s3.us-west-2.amazonaws.com/x/y.png?X-Amz-Expires=3600"/>';
+describe('assertNoExternalContentImages — ローカル化後に外部 URL が残っていないこと', () => {
+  // これはポリシー検査（「外部 URL を書くな」）ではなく事後条件。
+  // localizeContentImages を通した結果に対して呼ぶ。あちらは外部 URL を
+  // ダウンロードして置き換えるか例外を投げるかのどちらかなので、ここに
+  // 引っかかるのは実装が壊れたときだけ。
+  const localized = '<figure><img src="/notion-static/ab12cd34.png" alt="AMMI"/></figure>';
+  const handPlaced = '<figure><img src="/images/ammi-biplot.png" alt="AMMI"/></figure>';
 
-  it('サイト内パスだけなら通す', () => {
-    assert.doesNotThrow(() => assertNoExternalContentImages([{ slug: 'a', content: local }]));
+  it('ローカル化済み・手置きのサイト内パスは通す', () => {
+    assert.doesNotThrow(() => assertNoExternalContentImages([{ slug: 'a', content: localized }]));
+    assert.doesNotThrow(() => assertNoExternalContentImages([{ slug: 'a', content: handPlaced }]));
     assert.doesNotThrow(() => assertNoExternalContentImages([{ slug: 'a', content: '<p>図なし</p>' }]));
     assert.doesNotThrow(() =>
       assertNoExternalContentImages([{ slug: 'a', content: '<img src="data:image/png;base64,iVBORw0KGgo="/>' }]),
     );
   });
 
-  it('旧ドメインの画像は止める', () => {
-    assert.throws(() => assertNoExternalContentImages([{ slug: 'a', content: legacy }]), /外部の画像 URL/);
+  it('外部 URL が残っていたら止める', () => {
+    assert.throws(
+      () => assertNoExternalContentImages([{ slug: 'a', content: '<img src="https://example.com/x.png"/>' }]),
+      /外部の画像 URL/,
+    );
   });
 
-  it('Notion の署名付き URL も止める（1 時間で切れるため）', () => {
-    assert.throws(() => assertNoExternalContentImages([{ slug: 'a', content: notionS3 }]), /外部の画像 URL/);
-  });
-
-  it('全記事をまとめて挙げ、直し方を出す', () => {
+  it('全記事をまとめて挙げ、実装を疑うよう促す', () => {
     try {
       assertNoExternalContentImages([
-        { slug: 'ok-post', content: local },
-        { slug: 'post-a', content: legacy },
-        { slug: 'post-b', content: notionS3 },
+        { slug: 'ok-post', content: localized },
+        { slug: 'post-a', content: '<img src="https://example.com/a.png"/>' },
+        { slug: 'post-b', content: '<img src="https://example.com/b.png"/>' },
       ]);
       assert.fail('例外が投げられなかった');
     } catch (error) {
@@ -106,12 +109,13 @@ describe('assertNoExternalContentImages — 本文の外部画像はビルドを
       assert.match(message, /post-a/);
       assert.match(message, /post-b/);
       assert.doesNotMatch(message, /ok-post/);
-      assert.match(message, /public\/images\//);
+      // ポリシー違反ではなく事後条件の違反として説明されること
+      assert.match(message, /ローカル化を通したのに/);
+      assert.match(message, /download-image\.ts/);
     }
   });
 
   it('対象は渡された記事だけ（下書きは呼び出し側で除外される）', () => {
-    // getPosts は Published フィルタ済みの配列を渡すので、下書きはここへ来ない
     assert.doesNotThrow(() => assertNoExternalContentImages([]));
   });
 });

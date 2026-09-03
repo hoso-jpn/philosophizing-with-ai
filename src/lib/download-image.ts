@@ -109,7 +109,13 @@ export async function saveImageLocally(url: string, context: string): Promise<st
   if (!(await exists(filePath))) {
     await mkdir(OUTPUT_DIR, { recursive: true });
     await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
-    console.log(`[image] saved ${fileName} (${context})`);
+
+    // 外部の画像を自分のサーバーへ複製する行為は、ホットリンクとは権利上の意味が
+    // 違う。黙って起きてはいけないので、実際にダウンロードしたときは必ず 1 行残す。
+    // URL はクエリを落として出す。Notion の署名付き URL は X-Amz-Signature /
+    // X-Amz-Security-Token を含み、これをビルドログへ流すべきではないため。
+    // 複製元の把握には origin + pathname で足りる。
+    console.log(`[images] localized: ${parsed.origin}${parsed.pathname} → ${PUBLIC_PREFIX}/${fileName} (${context})`);
   }
 
   return `${PUBLIC_PREFIX}/${fileName}`;
@@ -134,27 +140,32 @@ export class ExternalContentImageError extends Error {
   constructor(offenders: { slug: string; sources: string[] }[]) {
     const total = offenders.reduce((n, o) => n + o.sources.length, 0);
     super(
-      `公開記事の本文が外部の画像 URL を参照しています（${offenders.length} 記事・計 ${total} 箇所）。\n\n` +
+      `ローカル化を通したのに、本文に外部の画像 URL が残っています` +
+        `（${offenders.length} 記事・計 ${total} 箇所）。\n\n` +
         offenders
           .map((o) => `記事「${o.slug}」\n` + o.sources.map((x) => `  - ${x}`).join('\n'))
           .join('\n\n') +
         '\n\n' +
-        '本文の画像は外部 URL で参照しないでください。参照先が消えたり期限切れになると、\n' +
-        'ビルドは成功したまま画像だけが壊れます（旧ドメイン philosophizing-with-ai.com が実例）。\n' +
-        '画像は public/images/ に置いて /images/<file> で参照してください\n' +
-        '（手順は README「本文に図を入れる」）。',
+        'localizeContentImages は外部 URL を必ずダウンロードして /notion-static/ へ\n' +
+        '置き換えるか、失敗して例外を投げるかのどちらかになるはずで、外部 URL が\n' +
+        '残るのは想定外です。src/lib/download-image.ts の実装を確認してください。\n' +
+        '（本文へ手で図を入れる場合は public/images/ に置いて /images/<file> で\n' +
+        '参照します。手順は README「本文に図を入れる」）',
     );
     this.name = 'ExternalContentImageError';
   }
 }
 
 /**
- * 公開記事の本文に外部 URL の画像があればビルドを止める。
+ * ローカル化のあとに外部 URL の画像が残っていないことを確かめる。
  *
- * 本文（Content プロパティ）は HTML テキストなので、画像は URL 参照しか書けない。
- * 外部 URL は参照先が消えても気づけず、ビルドが成功したまま画像だけ壊れる。
- * Notion の署名付き URL は 1 時間で切れるので、そもそも書けない。
- * 図は public/images/ に置いてサイト内パスで参照する（README「本文に図を入れる」）。
+ * ポリシー検査ではなく **事後条件**。localizeContentImages を通した結果に対して
+ * 呼ぶ。あちらは外部 URL をダウンロードして置き換えるか例外を投げるかのどちらか
+ * なので、ここに引っかかるのは実装が壊れたときだけ。不変条件として置いておく。
+ *
+ * ポリシー検査（「外部 URL を書くな」）にしないのは、Phase 5 でページ本文へ移すと
+ * ブロックレンダラーが Notion の S3 URL を出力するため。ポリシーだとそれが弾かれ、
+ * 原因の分かりにくい失敗になる。ローカル化を先に通せばそのまま取り込める。
  *
  * 対象は **公開記事だけ**。下書きは getPosts の Published フィルタで
  * そもそも取得されないので、ここへは渡ってこない。
