@@ -10,7 +10,21 @@ import type { Post } from './types.ts';
  * ここでは必須プロパティの欠落を例外にし、任意プロパティの欠落は警告に留める。
  */
 
-const richTextItem = z.object({ plain_text: z.string() });
+const richTextItem = z.object({
+  plain_text: z.string(),
+  href: z.string().nullable().optional(),
+  annotations: z
+    .object({
+      bold: z.boolean().optional(),
+      italic: z.boolean().optional(),
+      strikethrough: z.boolean().optional(),
+      underline: z.boolean().optional(),
+      code: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+type RichTextItem = z.infer<typeof richTextItem>;
 
 const richTextProp = z.object({ rich_text: z.array(richTextItem) });
 const titleProp = z.object({ title: z.array(richTextItem) });
@@ -61,7 +75,70 @@ export class NotionSchemaError extends Error {
   }
 }
 
-const plain = (items: { plain_text: string }[]) => items.map((t) => t.plain_text).join('');
+const plain = (items: RichTextItem[]) => items.map((t) => t.plain_text).join('');
+
+const ANNOTATION_KEYS = ['bold', 'italic', 'strikethrough', 'underline', 'code'] as const;
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const escapeAttribute = (value: string) => escapeHtml(value).replace(/"/g, '&quot;');
+
+/**
+ * インラインコードを CommonMark の規則どおりに囲う。
+ *
+ * 単純に `` ` `` で挟むと、本文自体がバッククォートを含むとき壊れる
+ * （``foo`bar`` → `` `foo`bar` `` は「foo」だけがコードになる）。
+ * 中の最長連続バッククォートより 1 本多い区切りを使い、内容が
+ * バッククォートで始まる/終わる場合は空白で詰める。
+ */
+export function codeSpan(text: string): string {
+  const longestRun = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
+  const fence = '`'.repeat(longestRun + 1);
+  const needsPadding = text.startsWith('`') || text.endsWith('`');
+  const padding = needsPadding ? ' ' : '';
+  return `${fence}${padding}${text}${padding}${fence}`;
+}
+
+/**
+ * Content を marked へ渡す原稿として組み立てる。
+ *
+ * Notion の rich_text プロパティへ `**bold**` や `[label](url)` を入力すると、
+ * Notion はそれらを装飾・リンクへ変換し、plain_text から Markdown の区切り文字を
+ * 落とす。そのため Content だけは annotations / href から装飾を復元する。
+ * 見出し (`##`)、リスト (`-`) や引用 (`>`) は plain_text に残るのでそのまま通る。
+ *
+ * **装飾の無いフラグメントは 1 バイトも触らずに通す。** 既存の Gutenberg HTML 記事は
+ * すべて「装飾なし・href なし」なので、この関数を通しても文字列は変化しない（実測）。
+ *
+ * 装飾には Markdown の区切り文字ではなく HTML タグを使う。CommonMark の
+ * flanking 規則では、閉じ側の `**` の直前が全角約物だと強調を閉じられず、
+ * `行動を**veto（阻止）**する` がリテラルの `**` として表示される（実測で 4 箇所）。
+ * HTML タグはこの規則の影響を受けない。リンクも `<a href>` にすることで、
+ * ラベルに `]`、URL に `)` や空白が含まれても壊れない。
+ * インラインコードだけは Markdown のまま置く。HTML の `<code>` にすると中身が
+ * Markdown として再解釈されてしまい、コードの意味が失われるため。
+ */
+export function markdown(items: RichTextItem[]): string {
+  return items
+    .map((item) => {
+      const a = item.annotations;
+      const decorated = ANNOTATION_KEYS.some((key) => a?.[key] === true);
+      if (!decorated && !item.href) return item.plain_text;
+
+      // code の中身は marked がエスケープするので、ここでは触らない
+      let text = a?.code ? codeSpan(item.plain_text) : escapeHtml(item.plain_text);
+
+      if (a?.bold) text = `<strong>${text}</strong>`;
+      if (a?.italic) text = `<em>${text}</em>`;
+      if (a?.strikethrough) text = `<del>${text}</del>`;
+      if (a?.underline) text = `<u>${text}</u>`;
+      if (item.href) text = `<a href="${escapeAttribute(item.href)}">${text}</a>`;
+
+      return text;
+    })
+    .join('');
+}
 
 function extractTags(prop: z.infer<typeof tagsProp>): string[] {
   if ('multi_select' in prop) return prop.multi_select.map((t) => t.name).filter(Boolean);
@@ -98,7 +175,7 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   const titlePrefix = plain(props['名前'].title).trim();
   const titleBody = plain(props.Title.rich_text).trim();
   const slug = plain(props.Slug.rich_text).trim();
-  const content = plain(props.Content.rich_text);
+  const content = markdown(props.Content.rich_text);
 
   if (!slug) {
     throw new NotionSchemaError(pageId, '  - Slug: 空です。URL を決められないため公開できません');

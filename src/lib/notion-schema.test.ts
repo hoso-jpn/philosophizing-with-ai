@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { NotionSchemaError, parsePost, type ParseWarning } from './notion-schema.ts';
+import {
+  NotionSchemaError,
+  codeSpan,
+  markdown,
+  parsePost,
+  type ParseWarning,
+} from './notion-schema.ts';
 
 const rt = (text: string) => ({ rich_text: text ? [{ plain_text: text }] : [] });
 
@@ -119,5 +125,100 @@ describe('parsePost: 任意項目は警告に留める', () => {
     // 逆に列を消しても、必須でなければ通る（Status 列の削除がこれに当たる）。
     const post = parsePost(page({ 未知の列: rt('なにか') }));
     assert.equal(post.slug, 'rtx-5090');
+  });
+});
+
+const ann = (overrides: Record<string, boolean> = {}) => ({
+  bold: false, italic: false, strikethrough: false, underline: false, code: false,
+  color: 'default', ...overrides,
+});
+const frag = (plain_text: string, annotations?: unknown, href?: string | null) =>
+  ({ plain_text, annotations, href }) as never;
+
+describe('markdown: Notion の装飾を marked へ渡せる形に戻す', () => {
+  it('装飾も href も無いフラグメントは 1 バイトも変えない', () => {
+    // 既存の Gutenberg HTML 記事はすべてこの形。文字列が変わると本文が壊れる
+    const gutenberg = '<!-- wp:paragraph -->\n<p>本文です。</p>\n<!-- /wp:paragraph -->';
+    assert.equal(markdown([frag(gutenberg)]), gutenberg);
+    assert.equal(markdown([frag('a * b _c_ [d](e) `f` ~g~')]), 'a * b _c_ [d](e) `f` ~g~');
+  });
+
+  it('装飾を HTML タグで復元する', () => {
+    assert.equal(markdown([frag('x', ann({ bold: true }))]), '<strong>x</strong>');
+    assert.equal(markdown([frag('x', ann({ italic: true }))]), '<em>x</em>');
+    assert.equal(markdown([frag('x', ann({ strikethrough: true }))]), '<del>x</del>');
+    assert.equal(markdown([frag('x', ann({ underline: true }))]), '<u>x</u>');
+  });
+
+  it('全角約物の直前で強調が閉じられる（Markdown の flanking 規則を回避する）', () => {
+    // `行動を**veto（阻止）**する` は CommonMark では閉じられず、リテラルの ** が表示される。
+    // 実データで 4 箇所発生していた
+    const md = markdown([frag('行動を'), frag('veto（阻止）', ann({ bold: true })), frag('する')]);
+    assert.equal(md, '行動を<strong>veto（阻止）</strong>する');
+    assert.doesNotMatch(md, /\*\*/);
+  });
+
+  it('インラインコードは Markdown のまま残す（HTML にすると中身が再解釈される）', () => {
+    assert.equal(markdown([frag('x', ann({ code: true }))]), '`x`');
+  });
+
+  it('コード内のバッククォートで壊れない', () => {
+    assert.equal(markdown([frag('foo`bar', ann({ code: true }))]), '``foo`bar``');
+    assert.equal(markdown([frag('`x`', ann({ code: true }))]), '`` `x` ``');
+    assert.equal(markdown([frag('a``b', ann({ code: true }))]), '```a``b```');
+  });
+
+  it('リンクは HTML にする（ラベルの ] や URL の ) / 空白で壊れないため）', () => {
+    assert.equal(
+      markdown([frag('a]b', ann(), 'https://example.com')]),
+      '<a href="https://example.com">a]b</a>',
+    );
+    assert.equal(
+      markdown([frag('L', ann(), 'https://example.com/a(b) c')]),
+      '<a href="https://example.com/a(b) c">L</a>',
+    );
+    assert.equal(markdown([frag('L', ann(), '/posts/example')]), '<a href="/posts/example">L</a>');
+  });
+
+  it('href が null / 空文字ならリンクにしない', () => {
+    assert.equal(markdown([frag('L', ann(), null)]), 'L');
+    assert.equal(markdown([frag('L', ann(), '')]), 'L');
+  });
+
+  it('装飾フラグメントの HTML 特殊文字をエスケープする', () => {
+    assert.equal(markdown([frag('a<b>&c', ann({ bold: true }))]), '<strong>a&lt;b&gt;&amp;c</strong>');
+    assert.equal(markdown([frag('L', ann(), 'https://e.com/?a="x"')]).includes('&quot;'), true);
+  });
+
+  it('複数の装飾を決まった順序で入れ子にする', () => {
+    assert.equal(markdown([frag('x', ann({ bold: true, italic: true }))]), '<em><strong>x</strong></em>');
+    assert.equal(
+      markdown([frag('x', ann({ code: true }), 'https://example.com')]),
+      '<a href="https://example.com">`x`</a>',
+    );
+    assert.equal(
+      markdown([frag('x', ann({ bold: true }), '/posts/example')]),
+      '<a href="/posts/example"><strong>x</strong></a>',
+    );
+  });
+
+  it('装飾あり・なしが混在しても順序と文字列を保つ', () => {
+    assert.equal(
+      markdown([frag('前'), frag('太', ann({ bold: true })), frag('後')]),
+      '前<strong>太</strong>後',
+    );
+  });
+});
+
+describe('codeSpan', () => {
+  it('中の最長連続バッククォートより 1 本多い区切りを使う', () => {
+    assert.equal(codeSpan('x'), '`x`');
+    assert.equal(codeSpan('a`b'), '``a`b``');
+    assert.equal(codeSpan('a``b'), '```a``b```');
+  });
+
+  it('バッククォートで始まる/終わる場合は空白で詰める', () => {
+    assert.equal(codeSpan('`x'), '`` `x ``');
+    assert.equal(codeSpan('x`'), '`` x` ``');
   });
 });

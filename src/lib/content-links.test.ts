@@ -241,3 +241,34 @@ describe('assertNoSelfReferencingUrls — 本文とテンプレートに同じ�
     }
   });
 });
+
+describe('app.notion.com — Notion が書き換えた内部リンク', () => {
+  // Notion の rich_text に [label](/posts/slug) と書くと、href は
+  // https://app.notion.com/posts/slug という絶対 URL で保存される。
+  // そのまま出すと読者は Notion のアプリドメインへ飛ばされる（実データで 3 本）
+  const link = '<a href="https://app.notion.com/posts/living-by-curiosity">AIと哲学11</a>';
+
+  it('自サイト参照として検出する', () => {
+    assert.ok(isSelfHost('app.notion.com'));
+    const found = findSelfReferencingUrls(link);
+    assert.equal(found.length, 1);
+    assert.equal(found[0].host, 'app.notion.com');
+  });
+
+  it('ビルドを止め、Notion 側を直すよう案内する', () => {
+    try {
+      assertNoSelfReferencingUrls([{ slug: 'determinism-free-will-ai', content: link }]);
+      assert.fail('例外が投げられなかった');
+    } catch (error) {
+      const message = (error as Error).message;
+      assert.match(message, /determinism-free-will-ai/);
+      assert.match(message, /Notion がリンクを絶対 URL へ書き換えています/);
+      assert.match(message, /\/posts\/<slug>/);
+    }
+  });
+
+  it('Notion の他ホストは対象外', () => {
+    assert.equal(isSelfHost('www.notion.so'), false);
+    assert.equal(isSelfHost('notion.com'), false);
+  });
+});
