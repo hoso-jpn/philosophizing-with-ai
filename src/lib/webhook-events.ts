@@ -24,18 +24,24 @@ export type WebhookAction =
 /**
  * ページ単位のイベントのうち、公開状態しだいでサイトの出力が変わるもの。
  *
- * page.deleted も含める。公開済みの記事がゴミ箱へ入るとサイトから消す必要があり、
- * Notion はゴミ箱のページも取得できる（in_trash: true）ので Published を読める。
- * 下書きの削除なら Published が false なのでスキップに落ちる。
+ * これらはイベント発生後も対象ページを普通に取得できる前提で Published を確認する。
  */
 const PAGE_EVENTS_NEEDING_PUBLISH_CHECK = new Set([
   'page.created',
   'page.content_updated',
   'page.properties_updated',
   'page.moved',
-  'page.deleted',
-  'page.undeleted',
 ]);
+
+/**
+ * ページ状態を取り直さず、常にビルドするイベント。
+ *
+ * page.deleted はイベント到着時点でページが Trash に入っている。削除後のページを REST API
+ * で取得できることに依存すると、公開記事を消したのに再ビルドできずサイトへ残る経路ができる。
+ * page.undeleted も対になる低頻度イベントなので、下書きの復元で 1 回余分にビルドするより
+ * 「復元した公開記事が戻らない」可能性を消す方を優先する。
+ */
+const PAGE_EVENTS_ALWAYS_BUILD = new Set(['page.deleted', 'page.undeleted']);
 
 /** ページ単位だが、サイトの出力には影響しないもの */
 const PAGE_EVENTS_WITHOUT_OUTPUT_CHANGE = new Set(['page.locked', 'page.unlocked']);
@@ -130,6 +136,14 @@ export function classifyEvent(body: unknown): WebhookAction {
     };
   }
 
+  if (PAGE_EVENTS_ALWAYS_BUILD.has(eventType)) {
+    return {
+      kind: 'build',
+      eventType,
+      reason: '削除・復元は低頻度で、変更後ページの再取得に依存せずサイトへ反映する',
+    };
+  }
+
   if (PAGE_EVENTS_WITHOUT_OUTPUT_CHANGE.has(eventType)) {
     return { kind: 'skip', eventType, reason: 'ロック状態の変更はサイトの出力に影響しない' };
   }
@@ -156,6 +170,28 @@ export function classifyEvent(body: unknown): WebhookAction {
 }
 
 /**
+ * property ID の URL エンコード表記を吸収する。
+ *
+ * webhook の updated_properties は `XGe%40` のような percent-encoded ID を返す一方、
+ * REST API で取得したプロパティ ID の表記が同じとは限らない。比較時だけ decode して
+ * `XGe%40` と `XGe@` を同一視する。壊れた percent encoding はそのまま比較する。
+ */
+function normalizePropertyId(value: unknown): string | null {
+  if (typeof value !== 'string' || value === '') return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function samePropertyId(left: unknown, right: unknown): boolean {
+  const a = normalizePropertyId(left);
+  const b = normalizePropertyId(right);
+  return a !== null && b !== null && a === b;
+}
+
+/**
  * そのイベントで Published プロパティ自体が変更されたか。
  *
  * 用途は「非公開化の取りこぼし」を防ぐこと。Published を true→false にすると
@@ -163,9 +199,9 @@ export function classifyEvent(body: unknown): WebhookAction {
  * 残り続ける。data.updated_properties に Published が含まれていれば、現在値が
  * false でもビルドする。
  *
- * updated_properties の要素は、資料によって「プロパティIDの文字列」とも
- * 「id/name を持つオブジェクト」とも書かれている。実ペイロードを見るまで
- * 確定できないので両方を受け、ID と名前のどちらでも一致させる。
+ * updated_properties は現行仕様ではプロパティIDの文字列配列。過去の検証コードとの
+ * 互換のため id/name を持つオブジェクトも受ける。ID は URL エンコード差を正規化して
+ * 比較するので、webhook と REST API の表記差に依存しない。
  *
  * @param publishedPropertyId 取得したページから読んだ Published プロパティの ID
  * @returns true=変更された / false=変更されていない / null=判断できない
@@ -179,24 +215,17 @@ export function wasPublishedPropertyUpdated(
 
   return updated.some((entry) => {
     if (typeof entry === 'string') {
-      return entry === publishedPropertyId || entry === 'Published';
+      return entry === 'Published' || samePropertyId(entry, publishedPropertyId);
     }
     const item = asRecord(entry);
     if (!item) return false;
-    return (
-      (publishedPropertyId !== null && item.id === publishedPropertyId) || item.name === 'Published'
-    );
+    return item.name === 'Published' || samePropertyId(item.id, publishedPropertyId);
   });
 }
 
 /**
  * updated_properties をログ 1 行に収まる形へ畳む。
- *
- * page.properties_updated の updated_properties は「プロパティIDの文字列の配列」
- * （例: ["XGe%40","bDf%5B"]）で届く。一方こちらが持つ Published のプロパティIDは
- * REST API（Notion-Version 2022-06-28）から読んだ値で、webhook 側のバージョンとは
- * 別系統。両者の表記が一致することは実イベントで一度確認しておきたいので、
- * 突き合わせの材料をそのままログへ出す。
+ * 初回の実イベントでも観測可能性を残すため、受信した表記をそのまま出す。
  */
 export function summarizeUpdatedProperties(body: unknown): string {
   const updated = asRecord(asRecord(body)?.data)?.updated_properties;
