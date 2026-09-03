@@ -20,13 +20,12 @@ const pageEvent = (type: string, extra: Record<string, unknown> = {}) => ({
 
 describe('classifyEvent — 検証リクエスト', () => {
   it('verification_token を受けたらビルドを起こさない', () => {
-    const action = classifyEvent({ verification_token: 'secret_abc' });
+    const action = classifyEvent({ verification_token: 'token-for-test' });
     assert.equal(action.kind, 'verification');
-    assert.equal(action.kind === 'verification' && action.token, 'secret_abc');
+    assert.equal(action.kind === 'verification' && action.token, 'token-for-test');
   });
 
   it('challenge 形式が来ても受けてビルドを起こさない', () => {
-    // Notion の実際の検証は verification_token 方式だが、来ても安全に返す
     const action = classifyEvent({ type: 'url_verification', challenge: 'c-1' });
     assert.equal(action.kind, 'verification');
     assert.equal(action.kind === 'verification' && action.challenge, 'c-1');
@@ -34,18 +33,18 @@ describe('classifyEvent — 検証リクエスト', () => {
 });
 
 describe('classifyEvent — ページ単位のイベント', () => {
-  it('公開状態しだいのイベントは check-page になる', () => {
-    for (const type of [
-      'page.created',
-      'page.content_updated',
-      'page.properties_updated',
-      'page.moved',
-      'page.deleted',
-      'page.undeleted',
-    ]) {
+  it('通常の更新系は公開状態を確認する', () => {
+    for (const type of ['page.created', 'page.content_updated', 'page.properties_updated', 'page.moved']) {
       const action = classifyEvent(pageEvent(type));
       assert.equal(action.kind, 'check-page', type);
       assert.equal(action.kind === 'check-page' && action.pageId, 'page-1', type);
+    }
+  });
+
+  it('削除・復元はページ再取得に依存せず常にビルドする', () => {
+    for (const type of ['page.deleted', 'page.undeleted']) {
+      const action = classifyEvent(pageEvent(type));
+      assert.equal(action.kind, 'build', type);
     }
   });
 
@@ -77,12 +76,7 @@ describe('classifyEvent — ページIDを持たないイベント', () => {
   });
 
   it('データソース自体の出し入れは落とす', () => {
-    for (const type of [
-      'data_source.created',
-      'data_source.moved',
-      'data_source.deleted',
-      'data_source.undeleted',
-    ]) {
+    for (const type of ['data_source.created', 'data_source.moved', 'data_source.deleted', 'data_source.undeleted']) {
       assert.equal(classifyEvent({ type }).kind, 'skip', type);
     }
   });
@@ -135,19 +129,21 @@ describe('wasPublishedPropertyUpdated — 取り下げの取りこぼしを防�
   const withUpdated = (updated: unknown) => pageEvent('page.properties_updated', { data: { updated_properties: updated } });
 
   it('プロパティIDの配列で届いた場合に一致させる', () => {
-    assert.equal(wasPublishedPropertyUpdated(withUpdated(['%3F%5BOL', 'abc']), '%3F%5BOL'), true);
-    assert.equal(wasPublishedPropertyUpdated(withUpdated(['abc']), '%3F%5BOL'), false);
+    assert.equal(wasPublishedPropertyUpdated(withUpdated(['XGe%40', 'abc']), 'XGe%40'), true);
+    assert.equal(wasPublishedPropertyUpdated(withUpdated(['abc']), 'XGe%40'), false);
+  });
+
+  it('webhook の percent-encoded ID と REST API の decoded ID を同一視する', () => {
+    assert.equal(wasPublishedPropertyUpdated(withUpdated(['XGe%40']), 'XGe@'), true);
+    assert.equal(wasPublishedPropertyUpdated(withUpdated(['%3F%5BOL']), '?[OL'), true);
   });
 
   it('id / name を持つオブジェクトの配列で届いた場合にも一致させる', () => {
     assert.equal(
-      wasPublishedPropertyUpdated(withUpdated([{ id: '%3F%5BOL', name: 'Published' }]), '%3F%5BOL'),
+      wasPublishedPropertyUpdated(withUpdated([{ id: 'XGe%40', name: 'Published' }]), 'XGe@'),
       true,
     );
-    assert.equal(
-      wasPublishedPropertyUpdated(withUpdated([{ id: 'zzz', name: 'Tags' }]), '%3F%5BOL'),
-      false,
-    );
+    assert.equal(wasPublishedPropertyUpdated(withUpdated([{ id: 'zzz', name: 'Tags' }]), 'XGe@'), false);
   });
 
   it('プロパティIDが分からなくても名前で一致させる', () => {
@@ -157,10 +153,7 @@ describe('wasPublishedPropertyUpdated — 取り下げの取りこぼしを防�
   });
 
   it('本文プロパティだけの更新は Published の変更とみなさない', () => {
-    assert.equal(
-      wasPublishedPropertyUpdated(withUpdated([{ id: 'ct01', name: 'Content' }]), '%3F%5BOL'),
-      false,
-    );
+    assert.equal(wasPublishedPropertyUpdated(withUpdated([{ id: 'ct01', name: 'Content' }]), 'XGe@'), false);
   });
 
   it('updated_properties が無ければ判断できない（null）', () => {
@@ -171,22 +164,14 @@ describe('wasPublishedPropertyUpdated — 取り下げの取りこぼしを防�
 });
 
 describe('summarizeUpdatedProperties — 初回イベントでの突き合わせ用', () => {
-  const withUpdated = (updated: unknown) =>
-    pageEvent('page.properties_updated', { data: { updated_properties: updated } });
+  const withUpdated = (updated: unknown) => pageEvent('page.properties_updated', { data: { updated_properties: updated } });
 
   it('実ペイロード（プロパティIDの配列）をそのまま並べる', () => {
-    // 公式サンプルの形: "updated_properties": ["XGe%40", "bDf%5B", "DbAu"]
-    assert.equal(
-      summarizeUpdatedProperties(withUpdated(['XGe%40', 'bDf%5B', 'DbAu'])),
-      'XGe%40,bDf%5B,DbAu',
-    );
+    assert.equal(summarizeUpdatedProperties(withUpdated(['XGe%40', 'bDf%5B', 'DbAu'])), 'XGe%40,bDf%5B,DbAu');
   });
 
   it('オブジェクト形式なら名前も添える', () => {
-    assert.equal(
-      summarizeUpdatedProperties(withUpdated([{ id: 'XGe%40', name: 'Published' }])),
-      'XGe%40:Published',
-    );
+    assert.equal(summarizeUpdatedProperties(withUpdated([{ id: 'XGe%40', name: 'Published' }])), 'XGe%40:Published');
   });
 
   it('無い・空・非配列を区別できる', () => {
