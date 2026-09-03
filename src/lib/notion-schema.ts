@@ -10,7 +10,21 @@ import type { Post } from './types.ts';
  * ここでは必須プロパティの欠落を例外にし、任意プロパティの欠落は警告に留める。
  */
 
-const richTextItem = z.object({ plain_text: z.string() });
+const richTextItem = z.object({
+  plain_text: z.string(),
+  href: z.string().nullable().optional(),
+  annotations: z
+    .object({
+      bold: z.boolean().optional(),
+      italic: z.boolean().optional(),
+      strikethrough: z.boolean().optional(),
+      underline: z.boolean().optional(),
+      code: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+type RichTextItem = z.infer<typeof richTextItem>;
 
 const richTextProp = z.object({ rich_text: z.array(richTextItem) });
 const titleProp = z.object({ title: z.array(richTextItem) });
@@ -61,7 +75,35 @@ export class NotionSchemaError extends Error {
   }
 }
 
-const plain = (items: { plain_text: string }[]) => items.map((t) => t.plain_text).join('');
+const plain = (items: RichTextItem[]) => items.map((t) => t.plain_text).join('');
+
+/**
+ * Content は Markdown の原稿として扱う。
+ *
+ * Notion の rich_text プロパティへ `**bold**` や `[label](url)` を入力すると、
+ * Notion はそれらを装飾・リンクへ変換し、plain_text から Markdown の区切り文字を
+ * 落とす。そのため Content だけは annotations / href から Markdown を再構成する。
+ * 見出し (`##`)、リスト (`-`) や引用 (`>`) は plain_text に残るのでそのまま通る。
+ */
+function markdown(items: RichTextItem[]): string {
+  return items
+    .map((item) => {
+      let text = item.plain_text;
+      const a = item.annotations;
+
+      // 内側から外側へ決定的な順序で復元する。
+      if (a?.code) text = `\`${text}\``;
+      if (a?.bold) text = `**${text}**`;
+      if (a?.italic) text = `*${text}*`;
+      if (a?.strikethrough) text = `~~${text}~~`;
+      // CommonMark に underline はないため HTML を使う。marked はそのまま描画できる。
+      if (a?.underline) text = `<u>${text}</u>`;
+      if (item.href) text = `[${text}](${item.href})`;
+
+      return text;
+    })
+    .join('');
+}
 
 function extractTags(prop: z.infer<typeof tagsProp>): string[] {
   if ('multi_select' in prop) return prop.multi_select.map((t) => t.name).filter(Boolean);
@@ -98,7 +140,7 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   const titlePrefix = plain(props['名前'].title).trim();
   const titleBody = plain(props.Title.rich_text).trim();
   const slug = plain(props.Slug.rich_text).trim();
-  const content = plain(props.Content.rich_text);
+  const content = markdown(props.Content.rich_text);
 
   if (!slug) {
     throw new NotionSchemaError(pageId, '  - Slug: 空です。URL を決められないため公開できません');
