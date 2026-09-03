@@ -8,6 +8,7 @@ import {
   wasPublishedPropertyUpdated,
   type WebhookAction,
 } from '../../lib/webhook-events.ts';
+import { verifyNotionWebhookSignature } from '../../lib/webhook-signature.ts';
 
 /**
  * Notion の更新を受けて Vercel のデプロイフックを叩く。
@@ -17,9 +18,15 @@ import {
  * 枠を使い切り、同時ビルド 1 本のキューが詰まる。振り分けは webhook-events.ts、
  * 公開状態の確認は notion.ts の getPagePublishState が持つ。
  *
+ * 通常イベントは X-Notion-Signature を検証してから処理する。公開エンドポイントへ
+ * 第三者が偽イベントを送ってデプロイ枠を消費できないようにするため。
+ * 購読作成時の verification_token は署名秘密そのものを受け取る初回リクエストなので、
+ * この 1 回だけ署名検証の対象外。
+ *
  * 応答は原則 200。Notion は 200 以外だと最大 8 回・約 24 時間リトライするため、
  * 「ビルドしないと決めた」ことをリトライで蒸し返させない。
- * 200 を返さないのは、リトライで直る見込みがある障害（Notion API / デプロイフック）だけ。
+ * 200 を返さないのは、リトライで直る見込みがある障害（Notion API / デプロイフック）と
+ * 署名設定の不整合だけ。
  */
 
 // SSG 化後もこのルートだけはサーバ上で動かす必要がある
@@ -105,9 +112,12 @@ async function decideByPublishState(
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // 署名は JSON 再シリアライズ後ではなく、Notion が送った raw body に対して検証する。
+  const rawBody = await request.text();
+
   let body: unknown;
   try {
-    body = JSON.parse(await request.text());
+    body = JSON.parse(rawBody);
   } catch {
     // 壊れたボディはリトライさせても直らない
     log('skip: body is not valid JSON');
@@ -117,11 +127,27 @@ export const POST: APIRoute = async ({ request }) => {
   const action = classifyEvent(body);
   const label = action.kind === 'verification' ? 'verification' : action.eventType;
 
+  // 購読作成時は、これから署名秘密として保存する verification_token 自体を
+  // 受け取る段階なので署名検証できない。通常イベントだけここで検証する。
+  if (action.kind !== 'verification') {
+    const verificationToken = process.env.NOTION_WEBHOOK_VERIFICATION_TOKEN;
+    if (!verificationToken) {
+      console.error('[webhook] NOTION_WEBHOOK_VERIFICATION_TOKEN が設定されていません');
+      return json(500, { error: 'Webhook signature verification is not configured' });
+    }
+
+    const signature = request.headers.get('x-notion-signature');
+    if (!verifyNotionWebhookSignature(rawBody, signature, verificationToken)) {
+      console.error(`[webhook] invalid signature (${label})`);
+      return json(401, { error: 'Invalid webhook signature' });
+    }
+  }
+
   try {
     switch (action.kind) {
       case 'verification':
-        // verification_token は Notion の画面へ貼り戻す必要があるのでログに出す。
-        // 購読作成時の 1 回だけで、以後の配信には含まれない
+        // verification_token は Notion の画面へ貼り戻し、同時に Vercel の
+        // NOTION_WEBHOOK_VERIFICATION_TOKEN として保存する。購読を作り直したら必ず更新する。
         log(`verification request received. verification_token=${action.token ?? '(none)'}`);
         return json(
           200,
