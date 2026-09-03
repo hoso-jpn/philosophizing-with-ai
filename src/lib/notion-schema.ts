@@ -75,6 +75,42 @@ function extractTags(prop: z.infer<typeof tagsProp>): string[] {
     .filter(Boolean);
 }
 
+/**
+ * 旧 WordPress のドメイン。2026-09-03 時点で停止済み
+ * （root=403 / 配下=404 / Wayback にスナップショット無し）。
+ */
+export const LEGACY_DOMAIN = 'philosophizing-with-ai.com';
+
+export class LegacyDomainReferenceError extends Error {
+  constructor(slug: string, references: string[]) {
+    super(
+      `記事「${slug}」の本文が停止済みの旧ドメイン ${LEGACY_DOMAIN} を参照しています。\n` +
+        references.map((r) => `  - ${r}`).join('\n') +
+        '\n\n' +
+        `${LEGACY_DOMAIN} は既に停止しており、画像は表示されず、リンクは 404 になります。\n` +
+        'Notion の Content を直してください:\n' +
+        '  - 記事へのリンク → /posts/<slug>/ に書き換える\n' +
+        '  - 画像 → public/images/ に置いて /images/<file> で参照する\n' +
+        '    （手順は README「本文に図を入れる」）',
+    );
+    this.name = 'LegacyDomainReferenceError';
+  }
+}
+
+/**
+ * 本文に旧ドメインへの参照が残っていたらビルドを止める。
+ *
+ * 警告ではなく失敗にする。既知の 4 箇所を直したあとにこれが出たら、
+ * それは必ず書き間違いであって、警告では見落とされるため。
+ */
+export function assertNoLegacyDomainReference(content: string, slug: string): void {
+  const references = [
+    ...content.matchAll(new RegExp(`https?://[^"'\\s)]*${LEGACY_DOMAIN.replace('.', '\\.')}[^"'\\s)]*`, 'gi')),
+  ].map((m) => m[0]);
+
+  if (references.length > 0) throw new LegacyDomainReferenceError(slug, [...new Set(references)]);
+}
+
 export type ParseWarning = { slug: string; message: string };
 
 /**
@@ -117,6 +153,7 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
         `Notion API の上限で本文が切り捨てられている可能性があります`,
     );
   }
+  assertNoLegacyDomainReference(content, slug);
 
   const description = plain(props.Description?.rich_text ?? []).trim();
   if (!description) warnings.push({ slug, message: 'Description が空です' });

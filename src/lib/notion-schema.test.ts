@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { NotionSchemaError, parsePost, type ParseWarning } from './notion-schema.ts';
+import { NotionSchemaError, assertNoLegacyDomainReference, parsePost, type ParseWarning } from './notion-schema.ts';
 
 const rt = (text: string) => ({ rich_text: text ? [{ plain_text: text }] : [] });
 
@@ -117,5 +117,68 @@ describe('parsePost: 任意項目は警告に留める', () => {
     // 逆に列を消しても、必須でなければ通る（Status 列の削除がこれに当たる）。
     const post = parsePost(page({ 未知の列: rt('なにか') }));
     assert.equal(post.slug, 'rtx-5090');
+  });
+});
+
+describe('assertNoLegacyDomainReference: 旧ドメインへの参照はビルドを止める', () => {
+  it('参照が無ければ通す', () => {
+    assert.doesNotThrow(() => assertNoLegacyDomainReference('<p>本文</p>', 'slug'));
+    assert.doesNotThrow(() =>
+      assertNoLegacyDomainReference('<a href="/posts/other/">別の記事</a>', 'slug'),
+    );
+    assert.doesNotThrow(() =>
+      assertNoLegacyDomainReference('<img src="/images/fig1.png"/>', 'slug'),
+    );
+  });
+
+  it('旧ドメインへのリンクがあれば失敗する', () => {
+    assert.throws(
+      () =>
+        assertNoLegacyDomainReference(
+          '<a href="https://philosophizing-with-ai.com/eternal-return-and-identity/">前の記事</a>',
+          'functionalism-of-intelligence',
+        ),
+      /LegacyDomainReferenceError|旧ドメイン/,
+    );
+  });
+
+  it('旧ドメインの画像があれば失敗する', () => {
+    assert.throws(
+      () =>
+        assertNoLegacyDomainReference(
+          '<img src="https://philosophizing-with-ai.com/wp-content/uploads/2025/12/fig.jpg"/>',
+          'slug',
+        ),
+      /旧ドメイン/,
+    );
+  });
+
+  it('エラーに該当箇所と直し方が出る', () => {
+    try {
+      assertNoLegacyDomainReference(
+        '<a href="https://philosophizing-with-ai.com/a/">x</a>' +
+          '<img src="https://philosophizing-with-ai.com/b.jpg"/>',
+        'my-post',
+      );
+      assert.fail('例外が投げられなかった');
+    } catch (error) {
+      const message = (error as Error).message;
+      assert.match(message, /my-post/);
+      assert.match(message, /https:\/\/philosophizing-with-ai\.com\/a\//);
+      assert.match(message, /https:\/\/philosophizing-with-ai\.com\/b\.jpg/);
+      assert.match(message, /\/posts\/<slug>\//);
+      assert.match(message, /public\/images\//);
+    }
+  });
+
+  it('同じ URL が複数回出ても 1 回だけ挙げる', () => {
+    const url = 'https://philosophizing-with-ai.com/a/';
+    try {
+      assertNoLegacyDomainReference(`<a href="${url}">1</a><a href="${url}">2</a>`, 'slug');
+      assert.fail('例外が投げられなかった');
+    } catch (error) {
+      const occurrences = (error as Error).message.match(/philosophizing-with-ai\.com\/a\//g) ?? [];
+      assert.equal(occurrences.length, 1);
+    }
   });
 });

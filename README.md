@@ -55,7 +55,7 @@ Vercel（@astrojs/vercel アダプタ）
 
 - 必須プロパティの欠落・型違い（Notion 側でプロパティ名を変えた場合を含む）
 - `Slug` / `Date` / `Content` が空
-- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
+- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **14**、`src/lib/env.ts`）を下回る
 - `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
@@ -64,7 +64,7 @@ Notion から記事を取得できたら、**件数チェックの成否にか�
 1行出力する（下限が実態から乖離していることに気づけるようにするため）。
 
 ```text
-[notion] 15 posts fetched (floor: 13)
+[notion] 16 posts fetched (floor: 14)
 ```
 
 認証失敗や API 障害では `notionFetch` がこの行より前に例外を投げるので、
@@ -92,6 +92,30 @@ Notion から記事を取得できたら、**件数チェックの成否にか�
 
 未実装なのは描画そのものではなく**フォーマットの判定層**で、`Format` プロパティを
 見て変換を切り替える処理が Phase 4 の対象（Notion ページ本文への対応は Phase 5）。
+
+### 本文に図を入れる
+
+`Content` は HTML テキストなので、画像は **URL 参照しか書けない**。
+Notion にアップロードした画像の URL は署名付きで 1 時間で切れるため、
+本文へ直書きできない。当面は次の手順を使う。
+
+1. 画像を `public/images/` へ置く（例: `public/images/ammi-biplot.png`）
+2. 本文から `/images/<ファイル名>` で参照する
+
+```html
+<figure><img src="/images/ammi-biplot.png" alt="AMMI バイプロット"/></figure>
+```
+
+`/images/...` のようなサイト内パスはビルドのローカル化処理を素通りする
+（`src/lib/download-image.ts`）。外部 URL だけがダウンロード対象になる。
+
+> **旧ドメイン `philosophizing-with-ai.com` は停止済み**。本文がこのドメインを
+> 参照しているとビルドが失敗する（`assertNoLegacyDomainReference`）。
+> 画像は上の手順で差し替え、記事へのリンクは `/posts/<slug>/` に書き換える。
+
+> これは暫定手段。**本命は Phase 5** で、本文を Notion のページ本文へ移せば
+> 画像は Notion の画像ブロックになり、ビルド時のパイプラインが解決する。
+> そうなれば `public/images/` へ手で置く運用は不要になる。
 
 日本語タグを英語 slug に変換するマッピングは `src/lib/tag-slugs.ts` にある。
 未登録のタグは URL エンコードされた日本語 slug になる。
