@@ -63,9 +63,6 @@ export class NotionSchemaError extends Error {
 
 const plain = (items: { plain_text: string }[]) => items.map((t) => t.plain_text).join('');
 
-/** rich_text は 25 要素で打ち切られる。到達したら本文が欠けている可能性がある */
-const RICH_TEXT_ELEMENT_LIMIT = 25;
-
 function extractTags(prop: z.infer<typeof tagsProp>): string[] {
   if ('multi_select' in prop) return prop.multi_select.map((t) => t.name).filter(Boolean);
   // 区切り文字は既存実装と同一にしておく（変えるとタグの粒度が変わる）
@@ -80,6 +77,11 @@ export type ParseWarning = { slug: string; message: string };
 /**
  * Notion のページを Post に変換する。
  * 必須の不足は例外、任意の不足は warnings に積む。
+ *
+ * rich_text 配列の「要素数」には上限チェックを置かない。Notion の Retrieve a page
+ * にある 25 件制限は rich_text 断片そのものではなく、rich_text 内の page/person
+ * mention など参照値の完全性に関する制限。装飾やリンクで 25 断片以上になった正常な
+ * 本文を「切り捨て」と誤判定しないため。本文は Phase 5 でページ本文へ移行する予定。
  */
 export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   const pageId = (page as { id?: string } | null)?.id ?? '(id 不明)';
@@ -109,13 +111,6 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   }
   if (!content.trim()) {
     throw new NotionSchemaError(pageId, '  - Content: 本文が空です');
-  }
-  if (props.Content.rich_text.length >= RICH_TEXT_ELEMENT_LIMIT) {
-    throw new NotionSchemaError(
-      pageId,
-      `  - Content: rich_text が ${RICH_TEXT_ELEMENT_LIMIT} 要素に達しています。` +
-        `Notion API の上限で本文が切り捨てられている可能性があります`,
-    );
   }
 
   const description = plain(props.Description?.rich_text ?? []).trim();
