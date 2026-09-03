@@ -82,10 +82,14 @@ function extractTags(prop: z.infer<typeof tagsProp>): string[] {
 export const LEGACY_DOMAIN = 'philosophizing-with-ai.com';
 
 export class LegacyDomainReferenceError extends Error {
-  constructor(slug: string, references: string[]) {
+  constructor(offenders: { slug: string; references: string[] }[]) {
+    const total = offenders.reduce((n, o) => n + o.references.length, 0);
     super(
-      `記事「${slug}」の本文が停止済みの旧ドメイン ${LEGACY_DOMAIN} を参照しています。\n` +
-        references.map((r) => `  - ${r}`).join('\n') +
+      `停止済みの旧ドメイン ${LEGACY_DOMAIN} への参照が ` +
+        `${offenders.length} 記事・計 ${total} 箇所 残っています。\n\n` +
+        offenders
+          .map((o) => `記事「${o.slug}」\n` + o.references.map((r) => `  - ${r}`).join('\n'))
+          .join('\n\n') +
         '\n\n' +
         `${LEGACY_DOMAIN} は既に停止しており、画像は表示されず、リンクは 404 になります。\n` +
         'Notion の Content を直してください:\n' +
@@ -97,18 +101,27 @@ export class LegacyDomainReferenceError extends Error {
   }
 }
 
-/**
- * 本文に旧ドメインへの参照が残っていたらビルドを止める。
- *
- * 警告ではなく失敗にする。既知の 4 箇所を直したあとにこれが出たら、
- * それは必ず書き間違いであって、警告では見落とされるため。
- */
-export function assertNoLegacyDomainReference(content: string, slug: string): void {
-  const references = [
-    ...content.matchAll(new RegExp(`https?://[^"'\\s)]*${LEGACY_DOMAIN.replace('.', '\\.')}[^"'\\s)]*`, 'gi')),
-  ].map((m) => m[0]);
+/** 本文から旧ドメインへの参照を抜き出す（重複は除く） */
+export function findLegacyDomainReferences(content: string): string[] {
+  const pattern = new RegExp(`https?://[^"'\\s)]*${LEGACY_DOMAIN.replace('.', '\\.')}[^"'\\s)]*`, 'gi');
+  return [...new Set([...content.matchAll(pattern)].map((m) => m[0]))];
+}
 
-  if (references.length > 0) throw new LegacyDomainReferenceError(slug, [...new Set(references)]);
+/**
+ * 旧ドメインへの参照が残っていたらビルドを止める。
+ *
+ * 警告ではなく失敗にする。既知の箇所を直したあとにこれが出たら、それは必ず
+ * 書き間違いであって、警告では見落とされるため。
+ *
+ * 記事ごとに投げず全記事をまとめて検査する。1 件ずつ落とすと「直す →
+ * ビルド → 次が見つかる」を参照の数だけ繰り返すことになるため。
+ */
+export function assertNoLegacyDomainReferences(posts: { slug: string; content: string }[]): void {
+  const offenders = posts
+    .map((post) => ({ slug: post.slug, references: findLegacyDomainReferences(post.content) }))
+    .filter((entry) => entry.references.length > 0);
+
+  if (offenders.length > 0) throw new LegacyDomainReferenceError(offenders);
 }
 
 export type ParseWarning = { slug: string; message: string };
@@ -153,7 +166,6 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
         `Notion API の上限で本文が切り捨てられている可能性があります`,
     );
   }
-  assertNoLegacyDomainReference(content, slug);
 
   const description = plain(props.Description?.rich_text ?? []).trim();
   if (!description) warnings.push({ slug, message: 'Description が空です' });

@@ -1,5 +1,5 @@
 import { getMinExpectedPosts, getNotionApiKey, getNotionDatabaseId } from './env.ts';
-import { parsePost, type ParseWarning } from './notion-schema.ts';
+import { assertNoLegacyDomainReferences, parsePost, type ParseWarning } from './notion-schema.ts';
 import { saveImageLocally } from './download-image.ts';
 import type { Post } from './types.ts';
 
@@ -106,6 +106,9 @@ export async function getPosts(): Promise<Post[]> {
         '意図的に記事を減らした場合は環境変数 MIN_EXPECTED_POSTS で下限を調整してください。',
     );
   }
+
+  // 件数ログのあとに検査する。取得できた件数は先に見せたい
+  assertNoLegacyDomainReferences(posts);
 
   return Promise.all(posts.map(localizeImages));
 }
