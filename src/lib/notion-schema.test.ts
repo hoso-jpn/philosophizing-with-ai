@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { NotionSchemaError, assertNoLegacyDomainReferences, findLegacyDomainReferences, parsePost, type ParseWarning } from './notion-schema.ts';
+import { NotionSchemaError, parsePost, type ParseWarning } from './notion-schema.ts';
 
 const rt = (text: string) => ({ rich_text: text ? [{ plain_text: text }] : [] });
 
@@ -117,61 +117,5 @@ describe('parsePost: 任意項目は警告に留める', () => {
     // 逆に列を消しても、必須でなければ通る（Status 列の削除がこれに当たる）。
     const post = parsePost(page({ 未知の列: rt('なにか') }));
     assert.equal(post.slug, 'rtx-5090');
-  });
-});
-
-describe('旧ドメインへの参照はビルドを止める', () => {
-  const legacyLink = 'https://philosophizing-with-ai.com/eternal-return-and-identity/';
-  const legacyImage = 'https://philosophizing-with-ai.com/wp-content/uploads/2025/12/fig.jpg';
-
-  it('参照が無ければ何も見つからない', () => {
-    assert.deepEqual(findLegacyDomainReferences('<p>本文</p>'), []);
-    assert.deepEqual(findLegacyDomainReferences('<a href="/posts/other/">別の記事</a>'), []);
-    assert.deepEqual(findLegacyDomainReferences('<img src="/images/fig1.png"/>'), []);
-  });
-
-  it('リンクも画像も拾う', () => {
-    const found = findLegacyDomainReferences(`<a href="${legacyLink}">x</a><img src="${legacyImage}"/>`);
-    assert.deepEqual(found, [legacyLink, legacyImage]);
-  });
-
-  it('同じ URL が複数回出ても 1 回だけ挙げる', () => {
-    assert.deepEqual(
-      findLegacyDomainReferences(`<a href="${legacyLink}">1</a><a href="${legacyLink}">2</a>`),
-      [legacyLink],
-    );
-  });
-
-  it('参照が無ければ通す', () => {
-    assert.doesNotThrow(() =>
-      assertNoLegacyDomainReferences([{ slug: 'a', content: '<p>本文</p>' }]),
-    );
-  });
-
-  it('1 件でも参照があれば失敗する', () => {
-    assert.throws(
-      () => assertNoLegacyDomainReferences([{ slug: 'my-post', content: `<a href="${legacyLink}">x</a>` }]),
-      /旧ドメイン/,
-    );
-  });
-
-  it('全記事をまとめて挙げる（1 件ずつ落とさない）', () => {
-    try {
-      assertNoLegacyDomainReferences([
-        { slug: 'ok-post', content: '<p>問題なし</p>' },
-        { slug: 'post-a', content: `<a href="${legacyLink}">x</a>` },
-        { slug: 'post-b', content: `<img src="${legacyImage}"/>` },
-      ]);
-      assert.fail('例外が投げられなかった');
-    } catch (error) {
-      const message = (error as Error).message;
-      assert.match(message, /2 記事・計 2 箇所/);
-      assert.match(message, /post-a/);
-      assert.match(message, /post-b/);
-      assert.doesNotMatch(message, /ok-post/);
-      // 直し方も出す
-      assert.match(message, /\/posts\/<slug>\//);
-      assert.match(message, /public\/images\//);
-    }
   });
 });

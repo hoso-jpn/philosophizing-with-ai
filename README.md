@@ -57,7 +57,7 @@ Vercel（@astrojs/vercel アダプタ）
 - `Slug` / `Date` / `Content` が空
 - 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
 - `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
-- 本文が停止済みの旧ドメイン `philosophizing-with-ai.com` を参照している
+- 本文に**自サイトを指す絶対 URL** がある（内部リンクは相対パスでなければならない。下記）
 - 本文や HeroImage の**外部画像のダウンロードに失敗した**（404・拡張子が判別できない等）
 
 `Description` や `Tags` の欠落は警告のみで、ビルドは通る。
@@ -71,6 +71,19 @@ Notion から記事を取得できたら、**件数チェックの成否にか�
 ```text
 [notion] 15 posts fetched (floor: 13)
 ```
+
+本文が参照している URL のホストも毎ビルド一覧で出す。
+
+```text
+[content] 参照ホスト一覧:
+    2  academic.oup.com
+    1  www.cell.com
+    1  www.youtube.com
+```
+
+**禁止リストは漏れるが、一覧は漏れない。** 想定外のホストが混ざったら目視で気づける。
+実際、`philosophizing-with-ai.com` という特定文字列だけを見ていたために、
+旧プレビューホスト `philosophizing-with-ai.vercel.app` への参照 1 本を取りこぼした。
 
 認証失敗や API 障害では `notionFetch` がこの行より前に例外を投げるので、
 この行は出ない。**出ていないこと自体が「取得に到達していない」の合図**になる。
@@ -130,11 +143,29 @@ Notion にアップロードした画像の URL は署名付きで 1 時間で�
 > `X-Amz-Security-Token` を含み、ビルドログへ流すべきではないため。
 > 複製元の把握には origin + パスで足りる。
 
-> **旧ドメイン `philosophizing-with-ai.com` は停止済み**（原本も残っていない）。
-> 本文がこのドメインを参照しているとビルドが失敗する
-> （`assertNoLegacyDomainReferences`）。この検査はローカル化より**前**に走る。
-> 停止済みと分かっているドメインには「取得に失敗しました（404）」より
-> 「旧ドメインは停止済み。リンクは `/posts/<slug>/` へ」の方が直すべきことを直接指すため。
+### 内部リンクは相対パスで書く
+
+**公開記事の本文に自サイトを指す絶対 URL があるとビルドが失敗する**
+（`src/lib/content-links.ts` の `assertNoSelfReferencingUrls`）。
+
+対象ホストは現行・旧・プレビューを含む。
+
+| ホスト | |
+|---|---|
+| `blog.florigen.ai` | 現行ドメイン |
+| `philosophizing-with-ai.com` | 旧 WordPress。**停止済み・原本なし** |
+| `*.vercel.app` | プレビューデプロイを含む |
+
+現行ドメインも対象に入れているのが要点。自サイトへの絶対 URL は常にバグで、
+
+- プレビューデプロイで踏むと本番へ飛んでしまい、プレビューの意味がなくなる
+- ドメインを変えたときに全部壊れる（`philosophizing-with-ai.com` → `blog.florigen.ai` で実際に起きた）
+
+内部リンクは `/posts/<slug>` の相対パスで書く。
+
+この検査は画像のローカル化より**前**に走る。自サイトを指す URL には
+「取得に失敗しました（404）」より「相対パスへ書き換える」の方が直すべきことを
+直接指すため。リンク（`<a href>`）はそもそもローカル化の対象外でもある。
 
 > これは暫定手段。**本命は Phase 5** で、本文を Notion のページ本文へ移せば
 > 画像は Notion の画像ブロックになり、ビルド時のパイプラインが解決する。

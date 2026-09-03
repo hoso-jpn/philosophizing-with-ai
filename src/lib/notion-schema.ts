@@ -75,59 +75,6 @@ function extractTags(prop: z.infer<typeof tagsProp>): string[] {
     .filter(Boolean);
 }
 
-/**
- * 旧 WordPress のドメイン。2026-09-03 時点で停止済み
- * （root=403 / 配下=404 / Wayback にスナップショット無し）。
- */
-export const LEGACY_DOMAIN = 'philosophizing-with-ai.com';
-
-export class LegacyDomainReferenceError extends Error {
-  constructor(offenders: { slug: string; references: string[] }[]) {
-    const total = offenders.reduce((n, o) => n + o.references.length, 0);
-    super(
-      `停止済みの旧ドメイン ${LEGACY_DOMAIN} への参照が ` +
-        `${offenders.length} 記事・計 ${total} 箇所 残っています。\n\n` +
-        offenders
-          .map((o) => `記事「${o.slug}」\n` + o.references.map((r) => `  - ${r}`).join('\n'))
-          .join('\n\n') +
-        '\n\n' +
-        `${LEGACY_DOMAIN} は既に停止しており、画像は表示されず、リンクは 404 になります。\n` +
-        'Notion の Content を直してください:\n' +
-        '  - 記事へのリンク → /posts/<slug>/ に書き換える\n' +
-        '  - 画像 → public/images/ に置いて /images/<file> で参照する\n' +
-        '    （手順は README「本文に図を入れる」）',
-    );
-    this.name = 'LegacyDomainReferenceError';
-  }
-}
-
-/** 本文から旧ドメインへの参照を抜き出す（重複は除く） */
-export function findLegacyDomainReferences(content: string): string[] {
-  const pattern = new RegExp(`https?://[^"'\\s)]*${LEGACY_DOMAIN.replace('.', '\\.')}[^"'\\s)]*`, 'gi');
-  return [...new Set([...content.matchAll(pattern)].map((m) => m[0]))];
-}
-
-/**
- * 旧ドメインへの参照が残っていたらビルドを止める。
- *
- * 警告ではなく失敗にする。既知の箇所を直したあとにこれが出たら、それは必ず
- * 書き間違いであって、警告では見落とされるため。
- *
- * 記事ごとに投げず全記事をまとめて検査する。1 件ずつ落とすと「直す →
- * ビルド → 次が見つかる」を参照の数だけ繰り返すことになるため。
- *
- * 対象は **公開記事だけ**。下書きは getPosts の Published フィルタで
- * そもそも取得されないので、ここへは渡ってこない。作り直し待ちの下書きに
- * 旧ドメイン参照が残っていてもビルドは止まらない。
- */
-export function assertNoLegacyDomainReferences(posts: { slug: string; content: string }[]): void {
-  const offenders = posts
-    .map((post) => ({ slug: post.slug, references: findLegacyDomainReferences(post.content) }))
-    .filter((entry) => entry.references.length > 0);
-
-  if (offenders.length > 0) throw new LegacyDomainReferenceError(offenders);
-}
-
 export type ParseWarning = { slug: string; message: string };
 
 /**

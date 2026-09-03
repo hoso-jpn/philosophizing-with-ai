@@ -1,5 +1,10 @@
 import { getMinExpectedPosts, getNotionApiKey, getNotionDatabaseId } from './env.ts';
-import { assertNoLegacyDomainReferences, parsePost, type ParseWarning } from './notion-schema.ts';
+import {
+  assertNoSelfReferencingUrls,
+  countReferencedHosts,
+  formatReferencedHosts,
+} from './content-links.ts';
+import { parsePost, type ParseWarning } from './notion-schema.ts';
 import {
   assertNoExternalContentImages,
   localizeContentImages,
@@ -110,13 +115,18 @@ export async function getPosts(): Promise<Post[]> {
     );
   }
 
-  // 件数ログのあとに検査する。取得できた件数は先に見せたい。
+  // 本文が参照している全ホストを出す。禁止リストは漏れるが一覧は漏れない。
+  // 実際、特定文字列だけを見ていたために旧プレビューホストへの参照を取りこぼした
+  console.log('[content] 参照ホスト一覧:');
+  for (const line of formatReferencedHosts(countReferencedHosts(posts))) console.log(line);
+
+  // 検査は件数ログのあと。取得できた件数は先に見せたい。
   // 対象は公開記事だけ（下書きは上の Published フィルタで取得されない）。
   //
-  // 旧ドメインの検査はローカル化より前に置く。停止済みだと分かっているドメインには
-  // 「取得に失敗しました（404）」より「旧ドメインは停止済み。リンクは /posts/<slug>/ へ」
-  // の方が直すべきことを直接指すため。リンクはそもそもローカル化の対象外でもある。
-  assertNoLegacyDomainReferences(posts);
+  // ローカル化より前に置く。自サイトを指す URL は「取得に失敗しました（404）」より
+  // 「相対パスへ書き換える」の方が直すべきことを直接指すため。
+  // リンク（<a href>）はそもそもローカル化の対象外でもある。
+  assertNoSelfReferencingUrls(posts);
 
   const localized = await Promise.all(posts.map(localizeImages));
 
