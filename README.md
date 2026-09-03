@@ -1,327 +1,166 @@
 # Philosophizing with AI
 
-[blog.florigen.ai](https://blog.florigen.ai) のソース。
-Astro + Notion + Vercel で動く個人ブログ。
+[blog.florigen.ai](https://blog.florigen.ai) のソース。Astro + Notion + Vercel で動く個人ブログです。
 
-> **決定ログ**: Phase の順序・購読イベント・公開判定の基準といった合意済みの決定は
-> [PR #1](https://github.com/hoso-jpn/philosophizing-with-ai/pull/1) の本文冒頭にある。
-> **作業を再開するときは、他のどこよりも先にそこを読むこと。**
-> 決定が会話の中にしか無く、合意済みの順序を後から再提案してしまったことがあるため。
-> Phase 2+3 のマージ時に `docs/decisions.md` へ移す。
-
-> **この README の記述は 2026-09-03 にコードと突き合わせて検証済み。**
-> 実装の記憶から書いた誤りが実際に見つかったため（`MIN_EXPECTED_POSTS` の既定値、
-> `Status` の参照有無など）、以後も「〜していない」「〜のみ」といった否定形・限定形の
-> 断定を書くときは `grep` で裏を取ること。裏が取れないものは「未検証」と明記する。
+設計判断の正本は [`docs/decisions.md`](docs/decisions.md) です。作業再開時は README より先にそちらを確認してください。
 
 ## アーキテクチャ
 
 ```text
-Notion データベース（記事の実体）
-      │  Notion REST API を直接叩く（src/lib/notion.ts）
-      ▼
-Astro（src/pages/*.astro でレンダリング）
-      ▼
-Vercel（@astrojs/vercel アダプタ）
+Notion database
+   │  REST API
+   ▼
+Astro
+   ├─ 記事・タグ・RSS・sitemap: build 時に静的生成
+   └─ /api/notion-webhook: server route
+   ▼
+Vercel
 ```
 
-記事は Markdown ファイルではなく **Notion データベースの行**として存在する。
-`src/content/` は使っていない。
+公開記事は `Published=true` の行だけを取得します。production build では `getPosts()` をメモ化し、1ビルド中の一覧・記事・タグ・RSS・sitemap が同じ Notion スナップショットを見るようにしています。
 
-### Notion データベースのプロパティ
+## Notion データベース
 
 | プロパティ | 型 | 必須 | 用途 |
-|---|---|---|---|
-| `名前` | title | ※ | シリーズ接頭辞。例: `AIと実装01` |
-| `Title` | rich_text | ※ | 本タイトル。表示は `名前；Title` の連結 |
-| `Slug` | rich_text | ✅ | URL。`/posts/<slug>` |
-| `Date` | date | ✅ | 公開日。時刻の有無は行によって異なる |
-| `Published` | checkbox | ✅ | **公開判定はこれだけを見る** |
-| `Content` | rich_text | ✅ | 本文。現状は WordPress の Gutenberg HTML |
-| `Tags` | rich_text | ✅ | 読点・カンマ・空白区切り |
-| `Description` | rich_text | | 記事概要。未設定なら警告のみ |
-| `HeroImage` | files | | アイキャッチ |
+|---|---|---:|---|
+| `名前` | title | ※ | シリーズ接頭辞。例: `AIと哲学12` |
+| `Title` | rich_text | ※ | 本タイトル |
+| `Slug` | rich_text | ✅ | `/posts/<slug>` |
+| `Date` | date | ✅ | 公開日 |
+| `Published` | checkbox | ✅ | 公開判定 |
+| `Content` | rich_text | ✅ | 現在の本文。Phase 5 でページ本文へ移行予定 |
+| `Tags` | rich_text / multi_select | ✅ | タグ |
+| `Description` | rich_text |  | 概要 |
+| `HeroImage` | files |  | アイキャッチ |
+| `Format` | select / rich_text |  | Phase 4 用。未使用でも壊れない |
 
-※ `名前` と `Title` はどちらか一方が埋まっていればよい。
+※ `名前` と `Title` はどちらか一方が必要です。
 
-> `Status` 列（`publish` / `draft` の自由入力）は **2026-09-03 に廃止**した。
-> `Published` と実態がずれる行があり、二重管理になっていたため。
-> **公開判定は `Published` だけを見る。**
+旧 `Status` 列は廃止し、公開判定は `Published` に一本化しています。
 
-### 検証とビルドの失敗条件
+## ビルドの不変条件
 
-`src/lib/notion-schema.ts` が Notion の応答を zod で検証する。
-「静かに空になる」のを避けるため、以下はビルドを**失敗**させる。
+次の状態は静かに公開せず、ビルドを失敗させます。
 
-- 必須プロパティの欠落・型違い（Notion 側でプロパティ名を変えた場合を含む）
+- 必須プロパティの欠落・型違い
 - `Slug` / `Date` / `Content` が空
-- 公開記事が 0 件、または `MIN_EXPECTED_POSTS`（既定 **13**、`src/lib/env.ts`）を下回る
-- `Content` の rich_text が 25 要素に達している（Notion API の上限。本文が切れている疑い）
-- 本文に**自サイトを指す絶対 URL** がある（内部リンクは相対パスでなければならない。下記）
-- 本文や HeroImage の**外部画像のダウンロードに失敗した**（404・拡張子が判別できない等）
+- 公開記事が 0 件、または `MIN_EXPECTED_POSTS` を下回る
+- 自サイトを指す絶対 URL や `/posts/<Notion UUID>` が残っている
+- 外部画像のローカル化に失敗する
+- 生成 HTML に期限付き S3 URL / 停止済み旧ドメイン画像が残る
 
-`Description` や `Tags` の欠落は警告のみで、ビルドは通る。
+`Description` / `Tags` の欠落は警告に留めます。
 
-> 下の 2 つは **公開記事だけ**が対象。下書きは `Published` フィルタで取得されないため、
-> 作り直し待ちの下書きに旧ドメイン参照が残っていてもビルドは止まらない。
+`rich_text` の**要素数 25 自体は失敗条件にしません**。Notion の 25 件制限を rich_text 断片数の上限と解釈すると、リンクや装飾で断片が増えた正常な本文を誤って弾くためです。
 
-Notion から記事を取得できたら、**件数チェックの成否にかかわらず**取得件数と下限を
-1行出力する（下限が実態から乖離していることに気づけるようにするため）。
+## URL ルール
 
-```text
-[notion] 15 posts fetched (floor: 13)
-```
-
-本文が参照している URL のホストも毎ビルド一覧で出す。
+内部リンクは相対パスで書きます。
 
 ```text
-[content] 参照ホスト一覧:
-    2  academic.oup.com
-    1  www.cell.com
-    1  www.youtube.com
+/posts/<slug>
 ```
 
-**禁止リストは漏れるが、一覧は漏れない。** 想定外のホストが混ざったら目視で気づける。
-実際、`philosophizing-with-ai.com` という特定文字列だけを見ていたために、
-旧プレビューホスト `philosophizing-with-ai.vercel.app` への参照 1 本を取りこぼした。
+次は本文・Astroテンプレートとも禁止です。
 
-認証失敗や API 障害では `notionFetch` がこの行より前に例外を投げるので、
-この行は出ない。**出ていないこと自体が「取得に到達していない」の合図**になる。
+- `https://blog.florigen.ai/...`
+- `https://philosophizing-with-ai.com/...`
+- `https://*.vercel.app/...`
+- `/posts/<Notion page UUID>`
 
-> **運用**: 記事を数本追加したら `src/lib/env.ts` の `MIN_EXPECTED_POSTS` の
-> 既定値を上げること。上の行を見れば乖離に気づけるようにしてある。
-> 一時的に下回らせたいだけなら環境変数 `MIN_EXPECTED_POSTS` で上書きする。
+規則は `src/lib/content-links.ts` に集約しています。
 
-## 記事の書き方
+URL は末尾スラッシュ無しを canonical とします。`trailingSlash: 'never'` を使用し、RSS / sitemap / 内部リンクも揃えます。
 
-1. Notion データベースに行を追加する
-2. `名前` にシリーズ接頭辞（`AIと哲学13` のような「ラベル＋連番」）を入れる
-   - シリーズ別アーカイブはこの命名規則から自動生成される（`src/lib/series.ts`）
-   - 新しい `AIと◯◯` を作ってもコード変更は不要
-   - 既知シリーズの表示順だけ `SERIES_DISPLAY_ORDER` で指定している
-3. `Title` `Slug` `Date` `Tags` `Content` を埋める
-4. `Published` にチェックを入れる
+## 画像
 
-記事を追加したら `MIN_EXPECTED_POSTS` の既定値の見直しも忘れないこと。
+Notion の files URL は期限付きなので、HeroImage と外部本文画像は build 時に `public/notion-static/` へローカル化します。
 
-`Content` に入っている実データは現在 WordPress の Gutenberg HTML のみ。
-ただし描画は `src/pages/posts/[slug].astro` で `marked(post.content)` を通しており、
-**marked は生 HTML を素通しし Markdown も解釈する**ため、Markdown を書いても描画はされる。
-
-未実装なのは描画そのものではなく**フォーマットの判定層**で、`Format` プロパティを
-見て変換を切り替える処理が Phase 4 の対象（Notion ページ本文への対応は Phase 5）。
-
-### 本文に図を入れる
-
-`Content` は HTML テキストなので、画像は **URL 参照しか書けない**。
-Notion にアップロードした画像の URL は署名付きで 1 時間で切れるため、
-本文へ直書きできない。当面は次の手順を使う。
-
-1. 画像を `public/images/` へ置く（例: `public/images/ammi-biplot.png`）
-2. 本文から `/images/<ファイル名>` で参照する
-
-```html
-<figure><img src="/images/ammi-biplot.png" alt="AMMI バイプロット"/></figure>
-```
-
-`/images/...` のようなサイト内パスは、ビルドのローカル化処理を素通りする
-（`src/lib/download-image.ts`）。
-
-外部 URL の画像を書いた場合は、**ビルド時にダウンロードして `/notion-static/` へ
-取り込む**（＝ HTML には自分のサーバーのパスが残る）。取得に失敗したらビルドが失敗する。
-ただし外部ホストに依存しない `public/images/` 方式を推奨する。
-
-外部画像を複製したときは、ビルドログに 1 行残る。
-外部の画像を自分のサーバーへ複製する行為はホットリンクとは権利上の意味が違うため、
-黙って起きないようにしてある。
+実際に外部画像を取得した場合は、署名クエリを除いた取得元をログに残します。
 
 ```text
-[images] localized: https://example.com/foo.png → /notion-static/ab12cd34.png (slug)
+[images] localized: https://example.com/image.png → /notion-static/<hash>.png (slug)
 ```
 
-> URL はクエリを落として出す。Notion の署名付き URL は `X-Amz-Signature` /
-> `X-Amz-Security-Token` を含み、ビルドログへ流すべきではないため。
-> 複製元の把握には origin + パスで足りる。
+Phase 5 前に本文へ手動で図を入れる場合は、暫定的に `public/images/` へ置いて `/images/<file>` で参照します。
 
-### 内部リンクは相対パスで書く
+## Notion webhook
 
-**公開記事の本文に自サイトを指す絶対 URL があるとビルドが失敗する**
-（`src/lib/content-links.ts` の `assertNoSelfReferencingUrls`）。
+`src/pages/api/notion-webhook.ts` は Notion のイベントを振り分け、必要なときだけ Vercel Deploy Hook を起動します。
 
-対象ホストは現行・旧・プレビューを含む。
+購読対象:
 
-| ホスト | |
-|---|---|
-| `blog.florigen.ai` | 現行ドメイン |
-| `philosophizing-with-ai.com` | 旧 WordPress。**停止済み・原本なし** |
-| `*.vercel.app` | プレビューデプロイを含む |
+- `page.properties_updated`
+- `page.deleted`
+- `page.undeleted`
+- `data_source.schema_updated`
 
-現行ドメインも対象に入れているのが要点。自サイトへの絶対 URL は常にバグで、
+Phase 5 で Notion ページ本文へ移行したら `page.content_updated` も追加します。
 
-- プレビューデプロイで踏むと本番へ飛んでしまい、プレビューの意味がなくなる
-- ドメインを変えたときに全部壊れる（`philosophizing-with-ai.com` → `blog.florigen.ai` で実際に起きた）
+### ビルド判定
 
-内部リンクは `/posts/<slug>` の相対パスで書く。
+- 公開記事の更新: build
+- 下書きの通常更新: skip
+- `Published: true → false`: build
+- `page.deleted` / `page.undeleted`: **常に build**
+- schema update: build
+- comment / lock / unknown event: skip
 
-この検査は画像のローカル化より**前**に走る。自サイトを指す URL には
-「取得に失敗しました（404）」より「相対パスへ書き換える」の方が直すべきことを
-直接指すため。リンク（`<a href>`）はそもそもローカル化の対象外でもある。
+削除・復元は、イベント後に対象ページを REST API で再取得できることへ依存させません。
 
-> これは暫定手段。**本命は Phase 5** で、本文を Notion のページ本文へ移せば
-> 画像は Notion の画像ブロックになり、ビルド時のパイプラインが解決する。
-> そうなれば `public/images/` へ手で置く運用は不要になる。
+`updated_properties` の property ID は Webhook と REST API で percent-encoding 表記が違っても一致するよう正規化して比較します。
 
-日本語タグを英語 slug に変換するマッピングは `src/lib/tag-slugs.ts` にある。
-未登録のタグは URL エンコードされた日本語 slug になる。
+### 署名検証
+
+通常イベントは `X-Notion-Signature` を検証してから処理します。
+
+必要な環境変数:
+
+```text
+NOTION_API_KEY
+NOTION_DATABASE_ID
+VERCEL_DEPLOY_HOOK_URL
+NOTION_WEBHOOK_VERIFICATION_TOKEN
+```
+
+購読作成時の `verification_token` は通常イベントの署名秘密です。Production の `NOTION_WEBHOOK_VERIFICATION_TOKEN` として保存し、**環境変数を含む新しい Production deployment を作成してから購読を有効化**してください。
+
+verification token をソース・PR本文・恒久ログへ貼らないでください。
+
+### 本番反映後の確認順
+
+1. main の Production deployment が Ready
+2. webhook endpoint が verification request を受けられることを確認
+3. Notion の購読を作成 / 再認証
+4. verification token を Vercel Production env に登録
+5. 新しい Production deployment を作成
+6. 購読を有効化
+7. 下書き保存 → build されない
+8. 公開記事編集 → build される
+9. 公開→非公開 → build され、記事が消える
+10. 削除 / 復元 → build される
 
 ## 開発
 
 ```sh
 npm install
-vercel env pull .env --environment=development   # NOTION_API_KEY / NOTION_DATABASE_ID / VERCEL_OIDC_TOKEN
+vercel env pull .env --environment=development
 npm run dev
 ```
 
-`.env` は git 管理外。
-
-> **注意**: Astro は `.env` を `import.meta.env` にしか載せない。
-> `src/lib/env.ts` が `import.meta.env` と `process.env` の両方を見るので通常は意識不要だが、
-> スクリプトから直接叩くときは `node --env-file=.env ...` を使うこと。
+主なコマンド:
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | 開発サーバ（localhost:4321） |
-| `npm run build` | 型チェック（`astro check`）→ 本番ビルド |
-| `npm run typecheck` | 型チェックのみ |
-| `npm test` | ユニットテスト（`node:test`） |
+| `npm run dev` | 開発サーバ |
+| `npm run build` | `astro check && astro build` |
+| `npm run typecheck` | 型チェック |
+| `npm test` | `node:test` |
 
-型エラーがあるとビルドは失敗する。「失敗は失敗として見せる」方針に合わせている。
+`.env*` と `public/notion-static/` は Git 管理外です。
 
-## デプロイ
+## 今後
 
-`main` への push で Vercel が自動デプロイする。
-Notion の更新は `src/pages/api/notion-webhook.ts` が Vercel Deploy Hook を叩いて反映する
-（`VERCEL_DEPLOY_HOOK_URL` が必要）。
+PR #1 のスコープは Phase 1–3 です。Markdown 本文への一括移行・記事の事実修正・引用形式・文体統一は Phase 5 で行います。
 
-### Vercel Hobby の制約
-
-| 項目 | Hobby |
-|---|---|
-| デプロイ作成数 | **100 回/日** |
-| 同時ビルド | **1 本** |
-| デプロイフックの起動 | **60 回/時**（プロジェクト単位・全フック合算） |
-| ビルド時間 | 45 分/デプロイ |
-
-ビルドが**失敗した場合、本番ドメインは直前の成功デプロイを配信し続ける**。
-Vercel のデプロイは不変（immutable）で、ドメインはポインタでしかなく、
-ビルドが成功して初めて本番エイリアスが張り替わる。これはプラン非依存で
-Hobby でも Pro でも同じ。壊れた記事が本番に出ることはない。
-
-### webhook のフィルタ
-
-上の枠は執筆中の自動保存で簡単に埋まるため、`notion-webhook.ts` は
-受信イベントを振り分けてから Deploy Hook を叩く。判定は `src/lib/webhook-events.ts`。
-
-| イベント | 挙動 |
-|---|---|
-| `page.created` / `content_updated` / `properties_updated` / `moved` / `deleted` / `undeleted` | 対象ページの `Published` を見る。**true ならビルド、false ならスキップ** |
-| `page.locked` / `page.unlocked` | スキップ（出力に影響しない） |
-| `data_source.schema_updated` | **ビルドする**。プロパティ名・型の変更は `notion-schema.ts` の検証を壊すので、変更直後にビルド失敗として気づきたい |
-| `data_source.content_updated` ほか | スキップ（`page.*` で同じ変更が届くため二重） |
-| `comment.*` | スキップ |
-| 未知の種別 | スキップ（枠を静かに食い潰さないため）。種別はログに出る |
-
-`Published` が false でも、そのイベントで `Published` プロパティ自体が変更されていれば
-ビルドする。**公開 → 非公開（取り下げ）も現在値は false になる**ため、現在値だけで
-切ると取り下げた記事がサイトに残り続ける。
-
-スキップ・起動のどちらでもログが 1 行残る。
-
-> **未検証（実イベント待ち）**: `updated_properties` は**プロパティIDの文字列配列**で届き
-> （公式サンプル `["XGe%40","bDf%5B","DbAu"]`）、照合に使う `Published` の ID は
-> REST API（`2022-06-28`）から読む。系統が違うため表記が一致するかは断定できない。
-> 初回イベントのログ `[published_prop=... updated=...]` で突き合わせて確認する。
-> 一致しない場合に影響するのは「取り下げ」の検知だけで、公開記事の更新には影響しない。
-
-```text
-[webhook] skip: ai-and-philosophy-13 is not published (page.content_updated)
-[webhook] build: ai-and-philosophy-12 is published (page.properties_updated)
-[webhook] build: ai-and-philosophy-12 was unpublished (page.properties_updated)
-```
-
-応答は原則 200 を返す。Notion は 200 以外だと最大 8 回・約 24 時間リトライするため、
-「ビルドしないと決めた」ことをリトライで蒸し返させない。500 を返すのは
-Notion API 障害など、リトライで直る見込みがあるときだけ。
-
-### Notion 側の購読設定
-
-**URL は本番ドメインを直接指定する。**
-
-```text
-https://blog.florigen.ai/api/notion-webhook
-```
-
-`philosophizing-with-ai.vercel.app` を指すと Vercel が **308 で
-`blog.florigen.ai` へリダイレクトする**（カスタムドメインを primary にしたため）。
-webhook の配信元がリダイレクトを追う保証はないので、直接指定する。
-
-**購読するイベント種別（3 + 任意1）:**
-
-| イベント | 要否 | 理由 |
-|---|---|---|
-| `page.properties_updated` | **必須** | 本文（`Content`）・`Published`・`Title` などの編集。**この構成では実質これが主役** |
-| `page.deleted` | **必須** | 公開記事の削除をサイトへ反映する |
-| `page.undeleted` | **必須** | 復元を反映する |
-| `data_source.schema_updated` | 推奨 | プロパティ名・型の変更を、変更直後にビルド失敗として検知する |
-| `page.created` | 任意 | 新規行はほぼ下書きで、公開時に `properties_updated` が続く |
-| `page.content_updated` | **不要（今は）** | ページ**本文（ブロック）**専用。本文は `Content` プロパティにあり、ブロックはレンダリングしていない。**Phase 4/5 で Notion ページ本文へ対応したら必須になる** |
-| `page.moved` / `page.locked` / `page.unlocked` | 不要 | DB 間移動の運用があれば `moved` のみ検討 |
-| `data_source.content_updated` / `comment.*` | 購読しない | `page.*` と二重。コード側でも落とすが、届かせない方が枠に優しい |
-
-> **`page.content_updated` ではなく `page.properties_updated`** である点が重要。
-> Notion の定義は `content_updated` = 「ページのブロックの追加・削除」、
-> `properties_updated` = 「ページのプロパティの更新」。この構成では本文が
-> `Content` プロパティなので、執筆中の自動保存は `properties_updated` で飛ぶ。
-
-購読作成時、Notion は `{"verification_token": "..."}` を 1 度だけ POST する。
-その値は Vercel のログに `[webhook] verification request received.` として出るので、
-Notion の画面へ貼り戻して検証を完了させる。
-
-### API バージョンについて
-
-2つのバージョンが**別系統**で動いていることに注意する。
-
-| | バージョン | 決めるもの |
-|---|---|---|
-| 受信（webhook のペイロード） | 購読側の設定（現在 `2026-03-11`） | `entity` / `data.updated_properties` の形 |
-| 送信（`src/lib/notion.ts` の REST 呼び出し） | `NOTION_VERSION = '2022-06-28'` | ページ取得・DB クエリの応答の形 |
-
-Notion は「古いバージョンのサポートを終了する予定は今のところ無い」としている。
-ただし `databases/{id}/query` は 2025-09-03 でデータソースへ移行済みのため、
-`NOTION_VERSION` を上げるときは `queryDatabase()` の書き換えが必要になる。
-
-## ディレクトリ
-
-```text
-src/
-├── components/   BaseHead / Header / Footer / FormattedDate
-├── layouts/      BlogPost.astro（/about が使用）
-├── lib/
-│   ├── notion.ts         Notion API との通信
-│   ├── notion-schema.ts  応答の検証と Post への正規化
-│   ├── env.ts            環境変数の読み出しと MIN_EXPECTED_POSTS
-│   ├── types.ts          Post 型
-│   ├── series.ts         シリーズ判定
-│   ├── webhook-events.ts webhook イベントの振り分け
-│   ├── tag-slugs.ts      日本語タグ → 英語 slug
-│   └── download-image.ts 画像の恒久化（未実装）
-├── pages/
-│   ├── index.astro       アーカイブトップ
-│   ├── blog.astro        記事一覧
-│   ├── about.astro
-│   ├── posts/[slug].astro
-│   ├── tags/[slug].astro
-│   ├── rss.xml.js / sitemap.xml.ts
-│   └── api/notion-webhook.ts
-└── styles/global.css
-```
+Phase 5 の本文改修対象は `docs/decisions.md` の D-22 を正とします。
