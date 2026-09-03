@@ -77,28 +77,63 @@ export class NotionSchemaError extends Error {
 
 const plain = (items: RichTextItem[]) => items.map((t) => t.plain_text).join('');
 
+const ANNOTATION_KEYS = ['bold', 'italic', 'strikethrough', 'underline', 'code'] as const;
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const escapeAttribute = (value: string) => escapeHtml(value).replace(/"/g, '&quot;');
+
 /**
- * Content は Markdown の原稿として扱う。
+ * インラインコードを CommonMark の規則どおりに囲う。
+ *
+ * 単純に `` ` `` で挟むと、本文自体がバッククォートを含むとき壊れる
+ * （``foo`bar`` → `` `foo`bar` `` は「foo」だけがコードになる）。
+ * 中の最長連続バッククォートより 1 本多い区切りを使い、内容が
+ * バッククォートで始まる/終わる場合は空白で詰める。
+ */
+export function codeSpan(text: string): string {
+  const longestRun = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
+  const fence = '`'.repeat(longestRun + 1);
+  const needsPadding = text.startsWith('`') || text.endsWith('`');
+  const padding = needsPadding ? ' ' : '';
+  return `${fence}${padding}${text}${padding}${fence}`;
+}
+
+/**
+ * Content を marked へ渡す原稿として組み立てる。
  *
  * Notion の rich_text プロパティへ `**bold**` や `[label](url)` を入力すると、
  * Notion はそれらを装飾・リンクへ変換し、plain_text から Markdown の区切り文字を
- * 落とす。そのため Content だけは annotations / href から Markdown を再構成する。
+ * 落とす。そのため Content だけは annotations / href から装飾を復元する。
  * 見出し (`##`)、リスト (`-`) や引用 (`>`) は plain_text に残るのでそのまま通る。
+ *
+ * **装飾の無いフラグメントは 1 バイトも触らずに通す。** 既存の Gutenberg HTML 記事は
+ * すべて「装飾なし・href なし」なので、この関数を通しても文字列は変化しない（実測）。
+ *
+ * 装飾には Markdown の区切り文字ではなく HTML タグを使う。CommonMark の
+ * flanking 規則では、閉じ側の `**` の直前が全角約物だと強調を閉じられず、
+ * `行動を**veto（阻止）**する` がリテラルの `**` として表示される（実測で 4 箇所）。
+ * HTML タグはこの規則の影響を受けない。リンクも `<a href>` にすることで、
+ * ラベルに `]`、URL に `)` や空白が含まれても壊れない。
+ * インラインコードだけは Markdown のまま置く。HTML の `<code>` にすると中身が
+ * Markdown として再解釈されてしまい、コードの意味が失われるため。
  */
-function markdown(items: RichTextItem[]): string {
+export function markdown(items: RichTextItem[]): string {
   return items
     .map((item) => {
-      let text = item.plain_text;
       const a = item.annotations;
+      const decorated = ANNOTATION_KEYS.some((key) => a?.[key] === true);
+      if (!decorated && !item.href) return item.plain_text;
 
-      // 内側から外側へ決定的な順序で復元する。
-      if (a?.code) text = `\`${text}\``;
-      if (a?.bold) text = `**${text}**`;
-      if (a?.italic) text = `*${text}*`;
-      if (a?.strikethrough) text = `~~${text}~~`;
-      // CommonMark に underline はないため HTML を使う。marked はそのまま描画できる。
+      // code の中身は marked がエスケープするので、ここでは触らない
+      let text = a?.code ? codeSpan(item.plain_text) : escapeHtml(item.plain_text);
+
+      if (a?.bold) text = `<strong>${text}</strong>`;
+      if (a?.italic) text = `<em>${text}</em>`;
+      if (a?.strikethrough) text = `<del>${text}</del>`;
       if (a?.underline) text = `<u>${text}</u>`;
-      if (item.href) text = `[${text}](${item.href})`;
+      if (item.href) text = `<a href="${escapeAttribute(item.href)}">${text}</a>`;
 
       return text;
     })

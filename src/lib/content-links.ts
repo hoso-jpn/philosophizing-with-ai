@@ -24,13 +24,23 @@
  * 常にバグで、(a) プレビューデプロイで踏むと本番へ飛んでしまいプレビューの意味が
  * なくなる、(b) ドメインを変えたときに全部壊れる（実際に起きた）。
  */
-const SELF_HOSTS = ['blog.florigen.ai', 'philosophizing-with-ai.com'];
+const SELF_HOSTS = ['blog.florigen.ai', 'philosophizing-with-ai.com', 'app.notion.com'];
 
 /** プレビューデプロイのホストは毎回変わるので、サフィックスで見る */
 const SELF_HOST_SUFFIXES = ['.vercel.app'];
 
 /** 停止済みで復元もできないホスト。エラー文で補足するために持つ */
 const DEAD_HOSTS = ['philosophizing-with-ai.com'];
+
+/**
+ * Notion がリンクを書き換えて残すホスト。
+ *
+ * Notion の rich_text プロパティに `[label](/posts/slug)` と書くと、Notion は
+ * href を `https://app.notion.com/posts/slug` という絶対 URL へ変換して保存する。
+ * そのまま出力すると、読者は Notion のアプリドメインへ飛ばされて 404 になる。
+ * パイプラインで書き換えず（D-14）、ここで止めて Notion 側を直してもらう。
+ */
+const NOTION_APP_HOST = 'app.notion.com';
 
 export type UrlReference = {
   /** 'link' = <a href> / 'image' = <img src> */
@@ -121,9 +131,12 @@ export class SelfReferencingUrlError extends Error {
                     `  ${r.tag}\n` +
                     (r.host === '(サイト内)'
                       ? '  → Notion のページ ID ではなく slug で書いてください（/posts/<slug>）'
-                      : r.kind === 'link'
-                        ? '  → 相対パス（/posts/<slug>）に書き換えてください'
-                        : '  → public/images/ に置いて /images/<file> で参照してください'),
+                      : r.host === NOTION_APP_HOST
+                        ? '  → Notion がリンクを絶対 URL へ書き換えています。Notion 側で ' +
+                          '/posts/<slug> の相対リンクに直してください'
+                        : r.kind === 'link'
+                          ? '  → 相対パス（/posts/<slug>）に書き換えてください'
+                          : '  → public/images/ に置いて /images/<file> で参照してください'),
                 )
                 .join('\n'),
           )
