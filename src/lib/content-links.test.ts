@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   assertNoSelfReferencingUrls,
   countReferencedHosts,
+  findNotionIdPaths,
   findSelfReferencingUrls,
   formatReferencedHosts,
   isSelfHost,
@@ -115,7 +116,7 @@ describe('assertNoSelfReferencingUrls', () => {
       assert.fail('例外が投げられなかった');
     } catch (error) {
       const message = (error as Error).message;
-      assert.match(message, /\[content\] ai-hard-problem-functionalism: 自サイトへの絶対URLが含まれています/);
+      assert.match(message, /\[content\] ai-hard-problem-functionalism: 自サイトへの絶対URL/);
       assert.match(message, /philosophizing-with-ai\.vercel\.app/);
       assert.match(message, /相対パス（\/posts\/<slug>）に書き換えてください/);
       assert.doesNotMatch(message, /ok-post/);
@@ -145,7 +146,7 @@ describe('assertNoSelfReferencingUrls', () => {
       assert.fail('例外が投げられなかった');
     } catch (error) {
       const message = (error as Error).message;
-      assert.match(message, /2 記事・計 2 箇所/);
+      assert.match(message, /2 箇所・計 2 件/);
       assert.match(message, /post-a/);
       assert.match(message, /post-b/);
     }
@@ -184,5 +185,59 @@ describe('countReferencedHosts / formatReferencedHosts', () => {
       '    1  a.example',
       '    1  b.example',
     ]);
+  });
+});
+
+describe('findNotionIdPaths — Notion のページ ID がそのまま URL に残っている', () => {
+  it('about.astro に 4 か月残っていた実例を捕まえる', () => {
+    const found = findNotionIdPaths(
+      '<a href="/posts/302d3f39-acba-8137-a76f-d74390ed3bad">AIと哲学01</a>',
+    );
+    assert.equal(found.length, 1);
+    assert.equal(found[0].kind, 'link');
+  });
+
+  it('ハイフン無しの 32 桁も捕まえる', () => {
+    assert.equal(findNotionIdPaths('<a href="/posts/302d3f39acba8137a76fd74390ed3bad">x</a>').length, 1);
+  });
+
+  it('末尾スラッシュ付きでも捕まえる', () => {
+    assert.equal(
+      findNotionIdPaths('<a href="/posts/302d3f39-acba-8137-a76f-d74390ed3bad/">x</a>').length,
+      1,
+    );
+  });
+
+  it('通常の slug は対象外', () => {
+    assert.deepEqual(findNotionIdPaths('<a href="/posts/determinism-free-will-ai">x</a>'), []);
+    assert.deepEqual(findNotionIdPaths('<a href="/posts/rtx-5090-qwen38-flash-next-freetoken">x</a>'), []);
+    assert.deepEqual(findNotionIdPaths('<a href="/tags/llm">x</a>'), []);
+  });
+});
+
+describe('assertNoSelfReferencingUrls — 本文とテンプレートに同じ規則を当てる', () => {
+  it('テンプレートの UUID リンクも止める', () => {
+    try {
+      assertNoSelfReferencingUrls([
+        { slug: 'src/pages/about.astro', content: '<a href="/posts/302d3f39-acba-8137-a76f-d74390ed3bad">x</a>' },
+      ]);
+      assert.fail('例外が投げられなかった');
+    } catch (error) {
+      const message = (error as Error).message;
+      assert.match(message, /src\/pages\/about\.astro/);
+      assert.match(message, /Notion のページ ID を指す URL/);
+      assert.match(message, /slug で書いてください/);
+    }
+  });
+
+  it('絶対 URL と UUID が混在していても両方挙げる', () => {
+    try {
+      assertNoSelfReferencingUrls([
+        { slug: 'a', content: '<a href="https://blog.florigen.ai/x">1</a><a href="/posts/302d3f39acba8137a76fd74390ed3bad">2</a>' },
+      ]);
+      assert.fail('例外が投げられなかった');
+    } catch (error) {
+      assert.match((error as Error).message, /1 箇所・計 2 件/);
+    }
   });
 });

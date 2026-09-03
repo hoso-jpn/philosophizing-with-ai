@@ -5,6 +5,10 @@
  * それでは旧プレビューホスト `philosophizing-with-ai.vercel.app` への参照 1 本を
  * 取りこぼした（2026-09-03 発見）。禁止リストは必ず漏れる。
  *
+ * さらに、検査対象を Notion の本文だけにしていたため、`src/pages/about.astro` に
+ * 4 か月以上放置されていた `/posts/<Notion の UUID>` リンク 3 本も取りこぼした
+ * （同日発見・本番でも 404 だった）。**同じ規則を本文とテンプレートの両方へ適用する。**
+ *
  * そこで 2 段構えにしてある。
  *
  * 1. **規則で止める**: 公開記事の本文に「自サイトを指す絶対 URL」があればビルドを止める。
@@ -76,24 +80,50 @@ export function findSelfReferencingUrls(content: string): UrlReference[] {
   return found;
 }
 
+/**
+ * `/posts/<Notion のページ ID>` 形式。Notion 移行前の URL がそのまま残ったもの。
+ * slug は英小文字とハイフンなので、UUID 形式と取り違える余地はない。
+ */
+const NOTION_ID_PATH = /^\/posts\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})\/?$/i;
+
+/** `/posts/<UUID>` を指しているリンク・画像を集める */
+export function findNotionIdPaths(source: string): UrlReference[] {
+  const found: UrlReference[] = [];
+  for (const { kind, pattern } of TAG_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      if (!NOTION_ID_PATH.test(match[1])) continue;
+      const tag = match[0].length > MAX_TAG_LENGTH ? `${match[0].slice(0, MAX_TAG_LENGTH)}…` : match[0];
+      found.push({ kind, tag, url: match[1], host: '(サイト内)' });
+    }
+  }
+  return found;
+}
+
 export class SelfReferencingUrlError extends Error {
   constructor(offenders: { slug: string; references: UrlReference[] }[]) {
     const total = offenders.reduce((n, o) => n + o.references.length, 0);
     const hitsDeadHost = offenders.some((o) => o.references.some((r) => DEAD_HOSTS.includes(r.host)));
 
     super(
-      `公開記事の本文に自サイトへの絶対 URL があります（${offenders.length} 記事・計 ${total} 箇所）。\n\n` +
+      `自サイトへの絶対 URL、または Notion のページ ID を指す URL があります` +
+        `（${offenders.length} 箇所・計 ${total} 件）。\n\n` +
         offenders
           .map(
             (o) =>
-              `[content] ${o.slug}: 自サイトへの絶対URLが含まれています\n` +
+              `[content] ${o.slug}: ${
+                o.references.every((r) => r.host === '(サイト内)')
+                  ? 'Notion のページ ID を指す URL が含まれています'
+                  : '自サイトへの絶対URL / Notion のページ ID を指す URL が含まれています'
+              }\n` +
               o.references
                 .map(
                   (r) =>
                     `  ${r.tag}\n` +
-                    (r.kind === 'link'
-                      ? '  → 相対パス（/posts/<slug>）に書き換えてください'
-                      : '  → public/images/ に置いて /images/<file> で参照してください'),
+                    (r.host === '(サイト内)'
+                      ? '  → Notion のページ ID ではなく slug で書いてください（/posts/<slug>）'
+                      : r.kind === 'link'
+                        ? '  → 相対パス（/posts/<slug>）に書き換えてください'
+                        : '  → public/images/ に置いて /images/<file> で参照してください'),
                 )
                 .join('\n'),
           )
@@ -111,17 +141,23 @@ export class SelfReferencingUrlError extends Error {
 }
 
 /**
- * 公開記事の本文に自サイトへの絶対 URL があればビルドを止める。
+ * 自サイトへの絶対 URL と `/posts/<UUID>` があればビルドを止める。
  *
- * 記事ごとに投げず全記事をまとめて検査する。1 件ずつ落とすと
+ * **Notion の本文と Astro テンプレートの両方に同じ規則を当てる。**
+ * 本文だけを見ていたために about.astro の壊れたリンク 3 本を 4 か月見逃した。
+ *
+ * 1 件ずつ投げず全件まとめて検査する。1 件ずつ落とすと
  * 「直す → ビルド → 次が見つかる」を参照の数だけ繰り返すことになるため。
  *
- * 対象は **公開記事だけ**。下書きは getPosts の Published フィルタで
+ * 本文側の対象は **公開記事だけ**。下書きは getPosts の Published フィルタで
  * そもそも取得されないので、ここへは渡ってこない。
  */
-export function assertNoSelfReferencingUrls(posts: { slug: string; content: string }[]): void {
-  const offenders = posts
-    .map((post) => ({ slug: post.slug, references: findSelfReferencingUrls(post.content) }))
+export function assertNoSelfReferencingUrls(entries: { slug: string; content: string }[]): void {
+  const offenders = entries
+    .map((entry) => ({
+      slug: entry.slug,
+      references: [...findSelfReferencingUrls(entry.content), ...findNotionIdPaths(entry.content)],
+    }))
     .filter((entry) => entry.references.length > 0);
 
   if (offenders.length > 0) throw new SelfReferencingUrlError(offenders);

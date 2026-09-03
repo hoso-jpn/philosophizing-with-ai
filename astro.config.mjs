@@ -2,7 +2,11 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
-import { assertNoRemoteImagesInOutput, copyDownloadedImages } from './astro-integrations.mjs';
+import {
+    assertNoRemoteImagesInOutput,
+    assertTemplateUrls,
+    copyDownloadedImages,
+} from './astro-integrations.mjs';
 
 export default defineConfig({
     site: 'https://blog.florigen.ai',
@@ -28,6 +32,7 @@ export default defineConfig({
 
     integrations: [
         mdx(),
+        assertTemplateUrls(),
         copyDownloadedImages(),
         assertNoRemoteImagesInOutput(),
     ],

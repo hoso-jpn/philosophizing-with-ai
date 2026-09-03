@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { assertNoSelfReferencingUrls } from './src/lib/content-links.ts';
+
 /**
  * ビルド中にダウンロードした Notion の画像を出力へ入れる。
  *
@@ -85,6 +87,44 @@ export function assertNoRemoteImagesInOutput() {
           );
         }
         logger.info('生成 HTML に期限付きホストの画像は無し');
+      },
+    },
+  };
+}
+
+/**
+ * Astro テンプレート内のリンク・画像にも、本文と同じ URL 規則を当てる。
+ *
+ * assertNoSelfReferencingUrls は Notion の Content しか見ていなかった。そのため
+ * src/pages/about.astro に残っていた `/posts/<Notion の UUID>` リンク 3 本を
+ * 4 か月以上見逃していた（2026-09-03 発見。現行本番でも 404 だった）。
+ * 検査対象を本文に限っていたことが穴だったので、テンプレートにも同じ規則を当てる。
+ *
+ * 見るのは **文字列リテラルの href / src だけ**。`href={`/posts/${post.slug}`}` の
+ * ような式は対象にならないが、それは実行時に slug から作られるので静的には判定できず、
+ * 出力側は assert-no-remote-images-in-output と本文検査が受け持つ。
+ *
+ * MD 化後も意味を持つ検査なので恒久的に入れてよい（本文側の検査と違って
+ * Phase 5 で役目を終えない）。
+ */
+export function assertTemplateUrls() {
+  const SOURCE_DIR = path.join(process.cwd(), 'src');
+
+  return {
+    name: 'assert-template-urls',
+    hooks: {
+      'astro:config:setup': async ({ logger }) => {
+        const entries = [];
+        for (const entry of await readdir(SOURCE_DIR, { withFileTypes: true, recursive: true })) {
+          if (!entry.isFile() || !/\.(astro|html)$/.test(entry.name)) continue;
+          const file = path.join(entry.parentPath, entry.name);
+          entries.push({
+            slug: path.relative(process.cwd(), file),
+            content: await readFile(file, 'utf-8'),
+          });
+        }
+        assertNoSelfReferencingUrls(entries);
+        logger.info(`テンプレート ${entries.length} 件の URL を検査: 問題なし`);
       },
     },
   };
