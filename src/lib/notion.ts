@@ -144,16 +144,3 @@ export async function getPagePublishState(pageId: string): Promise<PagePublishSt
     publishedPropertyId: typeof published?.id === 'string' ? published.id : null,
   };
 }
-
-/** slug から公開記事を 1 件取得する。無ければ null */
-export async function getPostBySlug(slug: string): Promise<Post | null> {
-  const rows = await queryDatabase({
-    and: [publishedFilter, { property: 'Slug', rich_text: { equals: slug } }],
-  });
-  if (rows.length === 0) return null;
-
-  const warnings: ParseWarning[] = [];
-  const post = parsePost(rows[0], warnings);
-  reportWarnings(warnings);
-  return localizeImages(post);
-}
