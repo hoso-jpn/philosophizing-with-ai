@@ -23,8 +23,12 @@ const { post } = Astro.props;
 // ページ本文を区別できないので、必ずここで分岐する。
 //
 // notion-page の renderer は Issue #5。それまでは明示的に落とす。空を描くと、
-// 移行済みの記事が「本文の無い記事」として公開されてしまう。migration allowlist が
-// 空である限りここへは来ない（allowlist へ slug を足すのは #5 / #6 のあと）。
+// 移行済みの記事が「本文の無い記事」として公開されてしまう。
+//
+// **安全性をこの throw に依存させないこと。** ここは Issue #5 で renderer に
+// 置き換わって消える。ページ本文の URL / 画像の不変条件が未実装であることは
+// src/lib/content-source.ts の assertPageBodySourcesAreGuarded が取得の段で
+// 止めており、そちらは renderer が入っても効き続ける。
 if (post.contentSource.kind !== 'legacy') {
   throw new Error(
     `記事「${post.slug}」は Notion のページ本文を本文 source にしていますが、` +

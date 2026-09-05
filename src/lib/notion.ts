@@ -6,6 +6,7 @@ import {
 } from './content-links.ts';
 import { parsePost, type ParseWarning } from './notion-schema.ts';
 import {
+  assertPageBodySourcesAreGuarded,
   createPageBodyLoader,
   resolveArticleContentSource,
   type ArticleContentSource,
@@ -204,6 +205,13 @@ async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
   );
 
   reportContentSources(resolved);
+
+  // ページ本文には URL / 画像の不変条件がまだ掛かっていない（Issue #6）。
+  // 記事ページのテンプレートではなくここで止める。あちらの throw は Issue #5 で
+  // renderer に置き換わって消えるが、この検査は残り続ける。
+  // 内訳のログより後に置く。何が引っかかったかを先に見せたい
+  assertPageBodySourcesAreGuarded(resolved);
+
   return resolved;
 }
 

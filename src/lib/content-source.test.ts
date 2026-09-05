@@ -3,8 +3,12 @@ import { describe, it } from 'node:test';
 
 import {
   MissingArticleContentError,
+  PAGE_BODY_INVARIANTS_IMPLEMENTED,
+  UnguardedPageBodySourceError,
+  assertPageBodySourcesAreGuarded,
   createPageBodyLoader,
   resolveArticleContentSource,
+  type ArticleContentSource,
   type ContentSourceInput,
 } from './content-source.ts';
 import { PAGE_BODY_MIGRATED_SLUGS, usesPageBodySource } from './migration-allowlist.ts';
@@ -249,5 +253,74 @@ describe('createPageBodyLoader: 1 ビルド 1 スナップショット', () => {
     await assert.rejects(loadPageBody('page-1'), /503/);
     await assert.rejects(loadPageBody('page-1'), /503/);
     assert.equal(requests, 1);
+  });
+});
+
+
+describe('assertPageBodySourcesAreGuarded: #6 未実装のページ本文を公開経路へ通さない', () => {
+  const legacy = (slug: string) => ({
+    slug,
+    contentSource: { kind: 'legacy', content: '<p>本文</p>' } as ArticleContentSource,
+  });
+  const pageBody = (slug: string) => ({
+    slug,
+    contentSource: { kind: 'notion-page', pageId: `page-${slug}`, blocks: [] } as ArticleContentSource,
+  });
+
+  it('不変条件が未実装なら、ページ本文 source があるだけで落ちる', () => {
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
+      UnguardedPageBodySourceError,
+    );
+  });
+
+  it('legacy source だけなら通る', () => {
+    assert.doesNotThrow(() =>
+      assertPageBodySourcesAreGuarded([legacy('a'), legacy('b')], false),
+    );
+  });
+
+  it('記事が 1 件も無くても通る', () => {
+    assert.doesNotThrow(() => assertPageBodySourcesAreGuarded([], false));
+  });
+
+  it('legacy に混ざった 1 件でも見逃さない', () => {
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([legacy('a'), pageBody('b'), legacy('c')], false),
+      UnguardedPageBodySourceError,
+    );
+  });
+
+  it('#6 実装後（フラグ true）は通る', () => {
+    assert.doesNotThrow(() => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], true));
+  });
+
+  it('エラー文が該当 slug と復旧手段を示す', () => {
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
+      (e: Error) =>
+        e.message.includes('ai-stat-03') &&
+        e.message.includes('migration-allowlist') &&
+        e.message.includes('PAGE_BODY_INVARIANTS_IMPLEMENTED'),
+    );
+  });
+
+  it('既定のフラグは false。#6 が済むまで有効化できない', () => {
+    assert.equal(PAGE_BODY_INVARIANTS_IMPLEMENTED, false);
+    // 既定引数（フラグ未指定）でも落ちること
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')]),
+      UnguardedPageBodySourceError,
+    );
+  });
+
+  it('allowlist が空である現行構成では、そもそも notion-page が生まれない', async () => {
+    // 実際の allowlist（空）で解決させると legacy に落ちるので guard も素通りする
+    const resolved = await resolveArticleContentSource(article(), {
+      fetchPageBlocks: neverFetch,
+    });
+    assert.doesNotThrow(() =>
+      assertPageBodySourcesAreGuarded([{ slug: article().slug, contentSource: resolved }]),
+    );
   });
 });

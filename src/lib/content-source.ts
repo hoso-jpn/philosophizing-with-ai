@@ -97,6 +97,71 @@ export async function resolveArticleContentSource(
 }
 
 /**
+ * Notion のページ本文に対して URL / 画像の不変条件が実装済みか。
+ *
+ * **Issue #6 が完了したら true にする。それがこのフラグの唯一の用途。**
+ *
+ * legacy Content には次の検査が掛かっている（すべて `post.content` が対象）。
+ *
+ *   - assertNoSelfReferencingUrls … 自サイトへの絶対 URL と /posts/<UUID> を止める（D-13 / D-19）
+ *   - countReferencedHosts        … 参照ホストの一覧をビルドログへ出す（D-20）
+ *   - localizeContentImages       … 本文画像をローカルへ取り込む
+ *   - assertNoExternalContentImages … ローカル化の事後条件
+ *
+ * ページ本文（blocks）にはまだ 1 つも掛かっていない。この状態で移行済み記事を
+ * 公開すると、自サイト絶対 URL や期限付き S3 画像がそのまま出る。
+ *
+ * 「#6 の前に allowlist を有効化しない」をコメントで約束するのはやめる。
+ * 実際、これを止めていたのは src/pages/posts/[slug].astro の暫定 throw だけで、
+ * **Issue #5 が renderer を入れてその throw を消した瞬間に、検査の穴が音もなく開く**。
+ * データ層に置いたこの guard は renderer の有無と無関係に効き続ける。
+ */
+export const PAGE_BODY_INVARIANTS_IMPLEMENTED = false;
+
+export class UnguardedPageBodySourceError extends Error {
+  constructor(slugs: string[]) {
+    super(
+      `Notion のページ本文を本文 source にした記事が ${slugs.length} 件ありますが、` +
+        `ページ本文には URL / 画像の不変条件がまだ実装されていません（Issue #6）。\n` +
+        slugs.map((slug) => `  - ${slug}`).join('\n') +
+        '\n\n' +
+        'legacy Content には掛かっている次の検査が、ページ本文には掛かりません。\n' +
+        '  - 自サイトへの絶対 URL / Notion のページ ID を指す URL の検出（D-13 / D-19）\n' +
+        '  - 本文画像のローカル化と、外部 URL が残っていないことの事後条件\n\n' +
+        'このまま公開すると、内部リンクがドメイン変更で壊れ、期限付きの S3 画像が\n' +
+        '1 時間後に全滅します。次のどちらかを行ってください。\n' +
+        '  1. src/lib/migration-allowlist.ts から slug を外す（legacy Content へ戻ります）\n' +
+        '  2. Issue #6 を実装し、src/lib/content-source.ts の\n' +
+        '     PAGE_BODY_INVARIANTS_IMPLEMENTED を true にする',
+    );
+    this.name = 'UnguardedPageBodySourceError';
+  }
+}
+
+/**
+ * 不変条件が未実装のページ本文が公開経路へ進んでいないことを確かめる。
+ *
+ * 取得パイプラインの中で呼ぶ。記事ページのテンプレートではなくここに置くのは、
+ * テンプレート側の throw が Issue #5 で renderer に置き換わって消えるため。
+ * ここなら renderer が入っても、#6 が済むまでビルドが止まり続ける。
+ *
+ * allowlist が空のあいだ `notion-page` は 1 件も生まれないので、この検査は
+ * 現状の全記事に対して素通りする。
+ */
+export function assertPageBodySourcesAreGuarded(
+  articles: readonly { slug: string; contentSource: ArticleContentSource }[],
+  invariantsImplemented: boolean = PAGE_BODY_INVARIANTS_IMPLEMENTED,
+): void {
+  if (invariantsImplemented) return;
+
+  const unguarded = articles
+    .filter((article) => article.contentSource.kind === 'notion-page')
+    .map((article) => article.slug);
+
+  if (unguarded.length > 0) throw new UnguardedPageBodySourceError(unguarded);
+}
+
+/**
  * ページ本文の取得を組み立てる。
  *
  * ビルド 1 回のあいだ、同じページを 2 度取りに行かない。getPosts はメモ化されている
