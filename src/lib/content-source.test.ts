@@ -11,7 +11,12 @@ import {
   type ArticleContentSource,
   type ContentSourceInput,
 } from './content-source.ts';
-import { PAGE_BODY_MIGRATED_SLUGS, usesPageBodySource } from './migration-allowlist.ts';
+import {
+  PAGE_BODY_MIGRATED_SLUGS,
+  UnknownMigratedSlugError,
+  findUnknownMigratedSlugs,
+  usesPageBodySource,
+} from './migration-allowlist.ts';
 import { NotionPageBodyError, type NotionBlock } from './notion-blocks.ts';
 
 const article = (overrides: Partial<ContentSourceInput> = {}): ContentSourceInput => ({
@@ -322,5 +327,50 @@ describe('assertPageBodySourcesAreGuarded: #6 未実装のページ本文を公�
     assert.doesNotThrow(() =>
       assertPageBodySourcesAreGuarded([{ slug: article().slug, contentSource: resolved }]),
     );
+  });
+});
+
+describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを見つける', () => {
+  const published = ['determinism-free-will-ai', 'ai-stats-03', 'scent-of-rain'];
+
+  it('allowlist が空なら何も報告しない', () => {
+    assert.deepEqual(findUnknownMigratedSlugs(published, []), []);
+  });
+
+  it('公開記事に存在する slug は通る', () => {
+    assert.deepEqual(findUnknownMigratedSlugs(published, ['ai-stats-03']), []);
+    assert.deepEqual(
+      findUnknownMigratedSlugs(published, ['ai-stats-03', 'scent-of-rain']),
+      [],
+    );
+  });
+
+  it('公開記事に無い slug を報告する', () => {
+    assert.deepEqual(findUnknownMigratedSlugs(published, ['ai-stats-3']), ['ai-stats-3']);
+    assert.deepEqual(
+      findUnknownMigratedSlugs(published, ['ai-stats-03', 'typo-slug']),
+      ['typo-slug'],
+    );
+  });
+
+  it('綴りを補正しない（完全一致のみ）', () => {
+    // 大文字小文字・前後の空白・部分一致はいずれも別物として扱う。
+    // 曖昧一致を入れると、意図しない記事がページ本文へ切り替わる余地ができる
+    for (const near of ['AI-Stats-03', ' ai-stats-03', 'ai-stats-03 ', 'ai-stats']) {
+      assert.deepEqual(findUnknownMigratedSlugs(published, [near]), [near]);
+    }
+  });
+
+  it('既定では版管理された allowlist（空）を見るので何も報告しない', () => {
+    assert.deepEqual(findUnknownMigratedSlugs(published), []);
+    assert.deepEqual(findUnknownMigratedSlugs([]), []);
+  });
+
+  it('エラー文に該当 slug と考えられる原因が入る', () => {
+    const error = new UnknownMigratedSlugError(['ai-stats-3']);
+    assert.match(error.message, /ai-stats-3/);
+    assert.match(error.message, /migration-allowlist/);
+    assert.match(error.message, /Published/);
+    assert.equal(error.name, 'UnknownMigratedSlugError');
   });
 });

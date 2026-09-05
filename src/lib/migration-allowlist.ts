@@ -27,3 +27,39 @@ const migrated = new Set(PAGE_BODY_MIGRATED_SLUGS);
 export function usesPageBodySource(slug: string): boolean {
   return migrated.has(slug);
 }
+
+/**
+ * allowlist にあるが公開記事に存在しない slug を返す。
+ *
+ * 完全一致だけを見る。**typo を勝手に補正しない**（D-14 と同じ考え方で、
+ * 誤ったソースをパイプラインで隠さず、書いた側を直してもらう）。大文字小文字の
+ * 揺れや前後の空白も一致しない扱いにする。曖昧一致を入れると、意図しない記事が
+ * ページ本文へ切り替わる余地を作ってしまい、allowlist を置いた意味が薄れる。
+ *
+ * @param publishedSlugs 公開記事の slug
+ * @param allowlist 既定は版管理された一覧。差し替えられるのはテスト用
+ */
+export function findUnknownMigratedSlugs(
+  publishedSlugs: Iterable<string>,
+  allowlist: readonly string[] = PAGE_BODY_MIGRATED_SLUGS,
+): string[] {
+  const published = new Set(publishedSlugs);
+  return allowlist.filter((slug) => !published.has(slug));
+}
+
+export class UnknownMigratedSlugError extends Error {
+  constructor(slugs: string[]) {
+    super(
+      `migration allowlist の slug が公開記事に見つかりません（${slugs.length} 件）。\n` +
+        slugs.map((slug) => `  - ${slug}`).join('\n') +
+        '\n\n' +
+        'このままだと「移行したつもりで 1 件も移行されていない」状態になります。\n' +
+        '次のどれかです。\n' +
+        '  - slug の綴りが違う（src/lib/migration-allowlist.ts を直す）\n' +
+        '  - 対象記事がまだ非公開（Notion で Published にチェックを入れる）\n' +
+        '  - 記事の slug を変えた、または記事を消した（allowlist から外す）\n\n' +
+        'slug は完全一致で照合します。綴りの自動補正は行いません。',
+    );
+    this.name = 'UnknownMigratedSlugError';
+  }
+}

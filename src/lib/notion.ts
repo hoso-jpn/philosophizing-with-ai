@@ -6,6 +6,10 @@ import {
 } from './content-links.ts';
 import { parsePost, type ParseWarning } from './notion-schema.ts';
 import {
+  UnknownMigratedSlugError,
+  findUnknownMigratedSlugs,
+} from './migration-allowlist.ts';
+import {
   assertPageBodySourcesAreGuarded,
   createPageBodyLoader,
   resolveArticleContentSource,
@@ -120,7 +124,8 @@ const dateAscending = [{ property: 'Date', direction: 'ascending' }];
  * dev サーバーではメモ化しない。Notion を編集して再読み込みしても反映されなくなる。
  */
 let postsSnapshot: Promise<Post[]> | null = null;
-const MEMOIZE = !import.meta.env?.DEV;
+const IS_DEV = Boolean(import.meta.env?.DEV);
+const MEMOIZE = !IS_DEV;
 
 /**
  * ページ本文の取得。ビルド 1 回のあいだ、同じページを 2 度取りに行かない。
@@ -163,6 +168,11 @@ async function fetchPosts(): Promise<Post[]> {
     );
   }
 
+  // 移行 allowlist の綴り違い・取り残しをここで見つける。件数チェックのあと、
+  // ページ本文の取得より前に置く。「移行したつもりで 1 件も移行されていない」
+  // 状態を静かに許さないため
+  assertMigrationAllowlistMatches(posts.map((post) => post.slug));
+
   // 本文が参照している全ホストを出す。禁止リストは漏れるが一覧は漏れない。
   // 実際、特定文字列だけを見ていたために旧プレビューホストへの参照を取りこぼした
   console.log('[content] 参照ホスト一覧:');
@@ -182,6 +192,27 @@ async function fetchPosts(): Promise<Post[]> {
   assertNoExternalContentImages(localized);
 
   return resolveContentSources(localized);
+}
+
+/**
+ * migration allowlist の slug が実在の公開記事を指していることを確かめる。
+ *
+ * allowlist は完全一致の照合しかしないので、綴りを 1 文字間違えるとその記事は
+ * legacy のまま何事もなくビルドが通る。fail closed ではあるが、「移行したつもりで
+ * 実際には 1 件も移行されていない」状態を静かに許すことになる。#8 で canary の
+ * slug を有効化するとき、その取り違えに気づけるようにしておく。
+ *
+ * 本番ビルドでは落とす。dev では警告に留める。dev は Notion 側を編集しながら
+ * 動かす場で、対象記事を Published にする前に allowlist を先に書くことがあるため。
+ * 本番へ出る経路（production build）は従来どおり fail closed。
+ */
+function assertMigrationAllowlistMatches(publishedSlugs: string[]): void {
+  const unknown = findUnknownMigratedSlugs(publishedSlugs);
+  if (unknown.length === 0) return;
+
+  const error = new UnknownMigratedSlugError(unknown);
+  if (!IS_DEV) throw error;
+  console.warn(`[content] ${error.message}`);
 }
 
 /**
