@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 215" role="img"
+     aria-labelledby="figdtitle figddesc" xmlns:c2pa="http://c2pa.org/manifest">
+  <title id="figdtitle">AMMIとGGEが低次元化する部分の違い</title>
+  <desc id="figddesc">観測値は全体平均、環境の主効果、遺伝子型の主効果、交互作用に分解できる。AMMIは交互作用だけを低次元化し、GGEは環境の主効果を取り除いたうえで遺伝子型の主効果と交互作用をまとめて低次元化する。</desc>
+
+  <style><![CDATA[
+    .fig { font-family: "Noto Sans JP", "Noto Sans CJK JP", sans-serif; }
+    .ink      { fill: #23262a; }
+    .ink-soft { fill: #6b7178; }
+    .rule     { stroke: #9aa1a8; stroke-width: 1.3; fill: none; }
+    .gA-f { fill: #1d5f7a; }
+    .gB-f { fill: #b8611c; }
+    .gA-s { stroke: #1d5f7a; }
+    .gB-s { stroke: #b8611c; }
+  ]]></style>
+
+  <g class="fig">
+    <g class="ink" font-size="19" text-anchor="middle">
+      <text x="50"  y="62">Y</text><text x="80" y="62">=</text><text x="110" y="62">μ</text><text x="142" y="62">+</text><text x="175" y="62">E</text><text x="220" y="62">+</text><text x="265" y="62">G</text><text x="320" y="62">+</text><text x="376" y="62">G × E</text>
+    </g>
+    <g class="ink-soft" font-size="12" text-anchor="middle"><text x="110" y="88">全体平均</text><text x="175" y="88">環境の主効果</text><text x="265" y="88">遺伝子型の主効果</text><text x="376" y="88">交互作用</text></g>
+    <path class="rule gB-s" d="M344 118 L344 124 L408 124 L408 118"/>
+    <text class="gB-f" font-size="14" font-weight="600" x="420" y="129">AMMI</text><text class="ink-soft" font-size="14" x="472" y="129">交互作用だけを低次元化する</text>
+    <path class="rule gA-s" d="M252 158 L252 164 L408 164 L408 158"/>
+    <text class="gA-f" font-size="14" font-weight="600" x="420" y="169">GGE</text><text class="ink-soft" font-size="14" x="464" y="169">G と G×E をまとめて低次元化する</text>
+    <text class="ink-soft" font-size="12.5" x="252" y="192">各環境の平均（μ + E）を引き、G + G×E を残す</text>
+  </g>
+</svg>
