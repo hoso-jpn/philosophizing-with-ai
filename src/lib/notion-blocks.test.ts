@@ -155,6 +155,60 @@ describe('isPageBodySemanticallyEmpty: 空の定義', () => {
     assert.equal(isBlockSemanticallyEmpty(block), false);
   });
 
+  it('mention / equation は plain_text が空でも本文として扱う', () => {
+    // Notion の rich_text は text / mention / equation の 3 種。後ろ 2 つは
+    // plain_text 以外に意味を持つので、テキストが空でも空と判定してはいけない
+    const fragment = (item: unknown): NotionBlock => ({
+      id: 'x',
+      type: 'paragraph',
+      has_children: false,
+      paragraph: { rich_text: [item] },
+    });
+
+    assert.equal(
+      isPageBodySemanticallyEmpty([fragment({ type: 'mention', plain_text: '@ページ' })]),
+      false,
+    );
+    assert.equal(
+      isPageBodySemanticallyEmpty([
+        fragment({ type: 'equation', plain_text: 'x^2', equation: { expression: 'x^2' } }),
+      ]),
+      false,
+    );
+    // plain_text が空でも type で本文ありと判定できる
+    assert.equal(isPageBodySemanticallyEmpty([fragment({ type: 'mention', plain_text: '' })]), false);
+    assert.equal(
+      isPageBodySemanticallyEmpty([
+        fragment({ type: 'equation', plain_text: '   ', equation: { expression: '\\\\' } }),
+      ]),
+      false,
+    );
+  });
+
+  it('type: text の空・空白は従来どおり空', () => {
+    const textFragment = (text: string): NotionBlock => ({
+      id: 'x',
+      type: 'paragraph',
+      has_children: false,
+      paragraph: { rich_text: [{ type: 'text', plain_text: text, text: { content: text } }] },
+    });
+
+    assert.equal(isPageBodySemanticallyEmpty([textFragment('')]), true);
+    assert.equal(isPageBodySemanticallyEmpty([textFragment('   ')]), true);
+    assert.equal(isPageBodySemanticallyEmpty([textFragment('　\n\t')]), true);
+    assert.equal(isPageBodySemanticallyEmpty([textFragment('本文')]), false);
+  });
+
+  it('rich_text 断片がオブジェクトでなければ本文ありに倒す', () => {
+    const block: NotionBlock = {
+      id: 'x',
+      type: 'paragraph',
+      has_children: false,
+      paragraph: { rich_text: ['文字列', null, 42] },
+    };
+    assert.equal(isPageBodySemanticallyEmpty([block]), false);
+  });
+
   it('paragraph なのに rich_text が読めなければ本文ありに倒す', () => {
     assert.equal(isBlockSemanticallyEmpty({ id: 'x', type: 'paragraph' }), false);
     assert.equal(

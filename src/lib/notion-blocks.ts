@@ -177,10 +177,29 @@ export function isBlockSemanticallyEmpty(block: NotionBlock): boolean {
   // paragraph なのに rich_text が読めない＝想定外。空とは言い切れない
   if (!Array.isArray(richText)) return false;
 
-  return richText.every((item) => {
-    const text = (item as { plain_text?: unknown } | null)?.plain_text;
-    return typeof text === 'string' && text.trim() === '';
-  });
+  return richText.every(isBlankTextFragment);
+}
+
+/**
+ * rich_text 断片 1 件が「空白だけの素のテキスト」か。
+ *
+ * `type` を見るのが要点。Notion の rich_text には `text` のほかに `mention`
+ * （ページ・人・日付への参照）と `equation`（インライン数式）があり、これらは
+ * plain_text 以外に意味を持つ。plain_text だけで空と判定すると、数式や参照しか
+ * 置かれていない本文を「空」と見なして legacy Content へ黙って戻してしまう。
+ *
+ * そこで **`type` が `text` 以外だと分かった時点で空ではないと言い切る**。
+ * `type` が読めない断片（テストの簡略フィクスチャや想定外の応答）は plain_text で
+ * 判定する。判断できない形のときは空ではない側へ倒す。
+ */
+function isBlankTextFragment(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null) return false;
+
+  const { type, plain_text: text } = item as { type?: unknown; plain_text?: unknown };
+  // mention / equation など。plain_text が空でも本文として意味がある
+  if (typeof type === 'string' && type !== 'text') return false;
+
+  return typeof text === 'string' && text.trim() === '';
 }
 
 /**
@@ -190,10 +209,11 @@ export function isBlockSemanticallyEmpty(block: NotionBlock): boolean {
  * 副産物として空の paragraph が残ることが多く、それを本文ありと数えると、
  * 実際には何も書かれていないページで legacy Content を捨ててしまう。
  *
- * - ブロック 0 件            → 空
- * - 空 paragraph だけ        → 空
- * - 空白のみの paragraph だけ → 空
- * - divider / image / 等を含む → 空ではない
+ * - ブロック 0 件                        → 空
+ * - 空 paragraph だけ                    → 空
+ * - 空白のみの paragraph だけ             → 空
+ * - divider / image / 等を含む            → 空ではない
+ * - mention / equation を含む paragraph  → 空ではない（plain_text が空でも）
  */
 export function isPageBodySemanticallyEmpty(blocks: readonly NotionBlock[]): boolean {
   return blocks.every(isBlockSemanticallyEmpty);
