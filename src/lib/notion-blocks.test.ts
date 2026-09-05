@@ -134,10 +134,15 @@ describe('isPageBodySemanticallyEmpty: 空の定義', () => {
   });
 
   it('divider / image / equation / table はテキストが無くても本文として扱う', () => {
-    for (const type of ['divider', 'image', 'equation', 'table', 'code', 'embed', 'child_database']) {
+    assert.equal(isPageBodySemanticallyEmpty([divider()]), false);
+    for (const type of ['image', 'equation', 'table', 'code', 'embed', 'child_database']) {
       const block: NotionBlock = { id: 'x', type, has_children: false, [type]: {} };
       assert.equal(isPageBodySemanticallyEmpty([block]), false, `${type} を空と判定した`);
     }
+  });
+
+  it('空 paragraph に divider が 1 本混ざれば本文あり', () => {
+    assert.equal(isPageBodySemanticallyEmpty([paragraph(''), divider()]), false);
   });
 
   it('未知のブロック種別は本文ありに倒す（黙って legacy へ戻さない）', () => {

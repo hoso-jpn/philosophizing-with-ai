@@ -19,8 +19,22 @@ type Props = { post: Post };
 
 const { post } = Astro.props;
 
-// 本文の変換は Phase 4 でフォーマット層に置き換える
-const htmlContent = marked(post.content);
+// 本文の正本は contentSource。文字列だけでは legacy Content と Notion の
+// ページ本文を区別できないので、必ずここで分岐する。
+//
+// notion-page の renderer は Issue #5。それまでは明示的に落とす。空を描くと、
+// 移行済みの記事が「本文の無い記事」として公開されてしまう。migration allowlist が
+// 空である限りここへは来ない（allowlist へ slug を足すのは #5 / #6 のあと）。
+if (post.contentSource.kind !== 'legacy') {
+  throw new Error(
+    `記事「${post.slug}」は Notion のページ本文を本文 source にしていますが、` +
+      'その renderer はまだありません（Issue #5）。' +
+      'src/lib/migration-allowlist.ts から slug を外すと legacy Content へ戻ります。',
+  );
+}
+
+// legacy Content の描画。Phase 4 でフォーマット層に置き換える
+const htmlContent = marked(post.contentSource.content);
 const { title, tags, heroImage } = post;
 ---
 
