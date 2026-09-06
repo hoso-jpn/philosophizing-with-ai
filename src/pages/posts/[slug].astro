@@ -3,6 +3,8 @@ import { getPosts } from '../../lib/notion';
 import type { Post } from '../../lib/types';
 import { getSlugFromTag } from '../../lib/tag-slugs';
 import { marked } from 'marked';
+import { assertArticleDocumentRenderable } from '../../lib/article-document';
+import ArticleContent from '../../components/article/ArticleContent.astro';
 import BaseHead from '../../components/BaseHead.astro';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
@@ -22,23 +24,23 @@ const { post } = Astro.props;
 // 本文の正本は contentSource。文字列だけでは legacy Content と Notion の
 // ページ本文を区別できないので、必ずここで分岐する。
 //
-// notion-page の renderer は Issue #5。それまでは明示的に落とす。空を描くと、
-// 移行済みの記事が「本文の無い記事」として公開されてしまう。
+// legacy   … 既存記事。marked + set:html（従来どおり）
+// notion-page … 移行済み記事。型付き ArticleDocument をコンポーネントで描く
 //
-// **安全性をこの throw に依存させないこと。** ここは Issue #5 で renderer に
-// 置き換わって消える。ページ本文の URL / 画像の不変条件が未実装であることは
-// src/lib/content-source.ts の assertPageBodySourcesAreGuarded が取得の段で
-// 止めており、そちらは renderer が入っても効き続ける。
-if (post.contentSource.kind !== 'legacy') {
-  throw new Error(
-    `記事「${post.slug}」は Notion のページ本文を本文 source にしていますが、` +
-      'その renderer はまだありません（Issue #5）。' +
-      'src/lib/migration-allowlist.ts から slug を外すと legacy Content へ戻ります。',
-  );
+// **安全性をこのページに依存させないこと。** ページ本文の URL / 画像の不変条件が
+// 未実装であることは lib/content-source.ts の assertPageBodySourcesAreGuarded が
+// 取得の段で止めており（Issue #6 まで有効）、ここを通る前にビルドが落ちる。
+const source = post.contentSource;
+
+// 描けないブロック（image は #6、equation と table は #7）が含まれていたら、
+// 描画に入る前に記事単位で落とす。コンポーネント側でも弾くが、ここで出す方が
+// どの記事かが分かる
+if (source.kind === 'notion-page') {
+  assertArticleDocumentRenderable(source.document, { slug: post.slug });
 }
 
 // legacy Content の描画。Phase 4 でフォーマット層に置き換える
-const htmlContent = marked(post.contentSource.content);
+const legacyHtml = source.kind === 'legacy' ? marked(source.content) : null;
 const { title, tags, heroImage } = post;
 ---
 
@@ -123,7 +125,11 @@ const { title, tags, heroImage } = post;
         )}
 
         <hr />
-        <div class="notion-content" set:html={htmlContent}></div>
+        {source.kind === 'legacy' ? (
+          <div class="notion-content" set:html={legacyHtml}></div>
+        ) : (
+          <ArticleContent document={source.document} />
+        )}
       </article>
     </main>
     <Footer />

@@ -76,7 +76,33 @@ describe('resolveArticleContentSource: allowlist 内', () => {
       },
       usesPageBody: allowAll,
     });
-    assert.deepEqual(source, { kind: 'notion-page', pageId: 'page-1', blocks });
+    // 生ブロックではなく正規化済みの ArticleDocument を持つ（Issue #5）
+    assert.equal(source.kind, 'notion-page');
+    assert.deepEqual(source, {
+      kind: 'notion-page',
+      pageId: 'page-1',
+      document: {
+        blocks: [
+          {
+            kind: 'paragraph',
+            id: 'b1',
+            richText: [
+              {
+                kind: 'text',
+                text: 'ページ本文',
+                bold: false,
+                italic: false,
+                strikethrough: false,
+                underline: false,
+                code: false,
+                href: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.ok(!('blocks' in source), 'source が生ブロックを持ち出している');
   });
 
   it('正常に取得できたが空なら legacy Content へ戻す', async () => {
@@ -269,7 +295,11 @@ describe('assertPageBodySourcesAreGuarded: #6 未実装のページ本文を公�
   });
   const pageBody = (slug: string) => ({
     slug,
-    contentSource: { kind: 'notion-page', pageId: `page-${slug}`, blocks: [] } as ArticleContentSource,
+    contentSource: {
+      kind: 'notion-page',
+      pageId: `page-${slug}`,
+      document: { blocks: [] },
+    } as ArticleContentSource,
   });
 
   it('不変条件が未実装なら、ページ本文 source があるだけで落ちる', () => {

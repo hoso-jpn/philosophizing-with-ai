@@ -4,7 +4,9 @@ import {
   type BlockChildrenFetcher,
   type NotionBlock,
 } from './notion-blocks.ts';
+import { buildArticleDocument } from './notion-normalize.ts';
 import { usesPageBodySource } from './migration-allowlist.ts';
+import type { ArticleDocument } from './article-document.ts';
 
 /**
  * 記事本文の source を明示する層。
@@ -13,14 +15,18 @@ import { usesPageBodySource } from './migration-allowlist.ts';
  * 呼んでいた。文字列だけでは「legacy の Content プロパティ」と「Notion のページ本文
  * （block の配列）」を区別できないので、どちらであるかを型で持たせる。
  *
- * 描画はここでは行わない。Issue #5 の renderer が kind で分岐して
- * blocks を typed AST へ変換する。
+ * 描画はここでは行わない。分岐して描くのは記事ページ側。
+ *
+ * **notion-page は生ブロックではなく ArticleDocument を持つ。** Notion の API 形状を
+ * 知ってよいのは lib/notion-normalize.ts までで、そこから先（記事ページ・
+ * コンポーネント）へは正規化済みの木だけを渡す。生ブロックを持ち回すと、描画側が
+ * API 形状の判定を持ち始め、Notion の API バージョンを上げた時点で壊れる（D-38）。
  */
 export type ArticleContentSource =
   /** Blog Database の Content rich_text プロパティ。既存記事はすべてこちら */
   | { kind: 'legacy'; content: string }
   /** Notion のページ本文。移行済み記事だけがこちら */
-  | { kind: 'notion-page'; pageId: string; blocks: NotionBlock[] };
+  | { kind: 'notion-page'; pageId: string; document: ArticleDocument };
 
 /** source 解決に必要な、記事 1 件分の入力 */
 export type ContentSourceInput = {
@@ -32,7 +38,13 @@ export type ContentSourceInput = {
 };
 
 export type ContentSourceDeps = {
-  /** ページ本文を取得する。失敗したら投げること（空配列を返してはならない） */
+  /**
+   * ブロックの子を取得する。失敗したら投げること（空配列を返してはならない）。
+   *
+   * ページ本文の取得と入れ子ブロックの取得はどちらも `blocks/<id>/children` なので、
+   * 正規化中の子の取得にもこの同じ関数を渡す。呼び出し側がメモ化していれば、
+   * 同じブロックを 2 度取りに行かない。
+   */
   fetchPageBlocks: (pageId: string) => Promise<NotionBlock[]>;
   /** 移行済みかの判定。既定は版管理された allowlist */
   usesPageBody?: (slug: string) => boolean;
@@ -89,7 +101,14 @@ export async function resolveArticleContentSource(
   const blocks = await deps.fetchPageBlocks(article.id);
 
   if (!isPageBodySemanticallyEmpty(blocks)) {
-    return { kind: 'notion-page', pageId: article.id, blocks };
+    // 正規化も失敗を握り潰さない。未対応のブロックがあれば例外になり、
+    // 本文の一部が欠けたまま公開されることはない（Issue #5）
+    const document = await buildArticleDocument(blocks, {
+      slug: article.slug,
+      pageId: article.id,
+      fetchChildren: deps.fetchPageBlocks,
+    });
+    return { kind: 'notion-page', pageId: article.id, document };
   }
 
   if (legacy.trim()) return { kind: 'legacy', content: legacy };

@@ -1,0 +1,26 @@
+---
+/**
+ * 箇条書き・番号付きリスト。
+ *
+ * Notion は list item を 1 行ずつ返すので、まとめるのは正規化側の仕事
+ * （lib/notion-normalize.ts）。ここは束ねられたものを描くだけ。
+ * 入れ子は li の中に次のリストを置く形で、リスト構造を壊さない。
+ */
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+import ArticleBlocks from './ArticleBlocks.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'list' }>;
+}
+const { block } = Astro.props as Props;
+const Tag = block.ordered ? 'ol' : 'ul';
+---
+<Tag>
+  {block.items.map((item) => (
+    <li>
+      <ArticleRichText nodes={item.richText} />
+      {item.children.length > 0 && <ArticleBlocks blocks={item.children} />}
+    </li>
+  ))}
+</Tag>

@@ -1,0 +1,14 @@
+---
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+import ArticleBlocks from './ArticleBlocks.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'quote' }>;
+}
+const { block } = Astro.props as Props;
+---
+<blockquote>
+  <p><ArticleRichText nodes={block.richText} /></p>
+  {block.children.length > 0 && <ArticleBlocks blocks={block.children} />}
+</blockquote>

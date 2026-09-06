@@ -34,19 +34,30 @@ export type ParsedPost = {
   /**
    * legacy `Content` プロパティ由来の本文。
    *
-   * **描画には使わないこと。** 本文の正本は `Post.contentSource` で、legacy と
-   * Notion ページ本文のどちらかである。この項目は前者の中身にすぎない。
-   * 移行済み記事ではここに古い本文が残ったままになることがある。
+   * 名前に legacy と入れてあるのは、これが「記事の本文」ではなく
+   * **本文 source の候補の 1 つ**でしかないため。取得パイプラインの中でだけ使う
+   * （URL 検査・画像のローカル化・source 解決）。
    *
    * 移行対象（migration allowlist 内）の記事に限り空になりうる。
    * それ以外の記事で空ならビルドが失敗する。
    */
-  content: string;
+  legacyContent: string;
   published: boolean;
 };
 
-/** 本文 source まで解決済みの記事。ページやフィードが受け取るのはこちら */
-export type Post = ParsedPost & {
+/**
+ * 本文 source まで解決済みの記事。ページやフィードが受け取るのはこちら。
+ *
+ * **`legacyContent` を意図的に落としてある。** 残しておくと、ページ本文へ移行した
+ * 記事でも古い legacy 本文が「普通の本文」として読める状態が続き、新しい
+ * コンポーネントがうっかりそちらを描いてしまう。legacy 本文が要るのは
+ * `contentSource.kind === 'legacy'` のときだけで、そのときは
+ * `contentSource.content` に入っている。
+ *
+ * legacy へ戻したくなったら migration allowlist から slug を外す。次のビルドで
+ * source 解決が legacy を選び直すので、本文データが失われることはない。
+ */
+export type Post = Omit<ParsedPost, 'legacyContent'> & {
   /** 本文の正本。描画側は必ずこれを見て分岐する */
   contentSource: ArticleContentSource;
 };

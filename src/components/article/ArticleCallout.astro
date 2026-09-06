@@ -1,0 +1,41 @@
+---
+/**
+ * callout。
+ *
+ * 見た目の作り込みは後続でよいが、意味のある入れ物として出しておく。
+ * アイコンは装飾なので `aria-hidden` にし、読み上げでは本文だけが読まれるようにする。
+ */
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+import ArticleBlocks from './ArticleBlocks.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'callout' }>;
+}
+const { block } = Astro.props as Props;
+const { icon } = block;
+---
+<aside class="article-callout">
+  {icon?.kind === 'emoji' && <span class="article-callout__icon" aria-hidden="true">{icon.emoji}</span>}
+  <div class="article-callout__body">
+    <p><ArticleRichText nodes={block.richText} /></p>
+    {block.children.length > 0 && <ArticleBlocks blocks={block.children} />}
+  </div>
+</aside>
+
+<style>
+  .article-callout {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1.5em 0;
+    padding: 1rem 1.1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 4px;
+  }
+  .article-callout__icon { flex: none; line-height: 1.6; }
+  .article-callout__body { min-width: 0; }
+  /* callout 内の最後の段落の余白は入れ物側が持つ */
+  .article-callout__body > :global(p:last-child) { margin-bottom: 0; }
+</style>

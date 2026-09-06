@@ -195,7 +195,7 @@ export function parsePost(
   const titlePrefix = plain(props['名前'].title).trim();
   const titleBody = plain(props.Title.rich_text).trim();
   const slug = plain(props.Slug.rich_text).trim();
-  const content = props.Content ? markdown(props.Content.rich_text) : '';
+  const legacyContent = props.Content ? markdown(props.Content.rich_text) : '';
 
   if (!slug) {
     throw new NotionSchemaError(pageId, '  - Slug: 空です。URL を決められないため公開できません');
@@ -209,7 +209,7 @@ export function parsePost(
   // 本文がページ本文へ移っている記事だけ、Content が無くてよい。
   // その場合に本文がどこにも無いことは resolveArticleContentSource が捕まえる
   // （ページ本文を実際に取得してみるまで確定しないため、ここでは判定できない）。
-  if (!content.trim() && !usesPageBody(slug)) {
+  if (!legacyContent.trim() && !usesPageBody(slug)) {
     throw new NotionSchemaError(
       pageId,
       props.Content
@@ -239,7 +239,7 @@ export function parsePost(
     description,
     tags,
     heroImage,
-    content,
+    legacyContent,
     published: props.Published.checkbox,
   };
 }

@@ -1,0 +1,21 @@
+---
+/**
+ * 文字列を装飾タグで包む。内側から外側へ再帰する。
+ *
+ * 包むタグの数は断片ごとに変わるので、条件分岐を積むのではなく再帰にしてある。
+ * 順序を決めるのは lib/article-document.ts の decorationTags で、ここは並びに従うだけ。
+ */
+import Self from './ArticleDecoratedText.astro';
+
+type Props = { tags: readonly string[]; text: string };
+const { tags, text } = Astro.props;
+
+// Astro の動的タグ名は大文字始まりの変数で指定する
+const Tag = tags[0];
+const rest = tags.slice(1);
+---
+{Tag ? (
+  <Tag><Self tags={rest} text={text} /></Tag>
+) : (
+  text
+)}

@@ -227,6 +227,14 @@ export function safeHref(href: string | null | undefined): string | null {
   const trimmed = href.trim();
   if (trimmed === '') return null;
 
+  // 制御文字を含む URL は受け取らない。
+  //
+  // ブラウザは URL を解釈する前にタブ・改行・復帰を取り除くので、
+  // `java&#9;script:alert(1)` は `javascript:alert(1)` として実行される。
+  // 一方こちらのスキーム判定は素直に読むと「スキーム無し＝相対パス」と見なして
+  // そのまま通してしまう。正常な URL に生の制御文字は現れないので、丸ごと弾く。
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+
   // 相対 URL。スキームを持たないので javascript: 等にはなりえない。
   // ベースは判定のためだけのもので、戻り値には使わない
   let parsed: URL;
