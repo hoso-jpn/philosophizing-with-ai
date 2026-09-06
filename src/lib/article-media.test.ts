@@ -14,7 +14,7 @@ import type { ArticleBlock, ArticleDocument, ArticleImageBlock, ArticleRichText 
 
 /* ------------------------------------------------------------------ fixtures */
 
-const text = (value: string): ArticleRichText => ({
+const text = (value: string, href: string | null = null): Extract<ArticleRichText, { kind: 'text' }> => ({
   kind: 'text',
   text: value,
   bold: false,
@@ -22,7 +22,7 @@ const text = (value: string): ArticleRichText => ({
   strikethrough: false,
   underline: false,
   code: false,
-  href: null,
+  href,
 });
 
 const image = (
@@ -319,7 +319,7 @@ describe('AIと統計学03 相当の本文（SVG 6 枚 + caption + リンク）'
       {
         kind: 'paragraph',
         id: 'p1',
-        richText: [{ ...text('参考文献'), href: 'https://doi.org/10.1111/x' }],
+        richText: [text('参考文献', 'https://doi.org/10.1111/x')],
       },
     ]);
 
