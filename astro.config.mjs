@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import vercel from '@astrojs/vercel'; // 末尾に /serverless は付けない
 
 import {
+    assertLocalImagesExist,
     assertNoRemoteImagesInOutput,
     assertTemplateUrls,
     copyDownloadedImages,
@@ -33,8 +34,11 @@ export default defineConfig({
     integrations: [
         mdx(),
         assertTemplateUrls(),
+        // 並び順がそのまま astro:build:done の実行順になる。
+        // コピーしてから、出力を検査する
         copyDownloadedImages(),
         assertNoRemoteImagesInOutput(),
+        assertLocalImagesExist(),
     ],
     adapter: vercel(),
 });
