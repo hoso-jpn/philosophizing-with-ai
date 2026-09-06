@@ -473,6 +473,41 @@ describe('normalizeBlocks: rich text', () => {
     });
   });
 
+  it('type が「あるのに文字列でない」断片は落とす（text に寄せない）', async () => {
+    // notion-blocks.ts の semantic empty は同じ入力を「判断不能＝本文あり」に倒す。
+    // こちらだけ text と決めつけると 2 つの層で結論が食い違う
+    for (const brokenType of [42, null, {}, [], true]) {
+      await assert.rejects(
+        richTextOf([{ type: brokenType, plain_text: '' }]),
+        MalformedNotionBlockError,
+        `type=${JSON.stringify(brokenType)} を通した`,
+      );
+    }
+  });
+
+  it('type が無い断片は素のテキストとして扱う（既存フィクスチャの形）', async () => {
+    const [node] = await richTextOf([{ plain_text: '本文' }]);
+    assert.deepEqual(node, {
+      kind: 'text',
+      text: '本文',
+      bold: false,
+      italic: false,
+      strikethrough: false,
+      underline: false,
+      code: false,
+      href: null,
+    });
+  });
+
+  it('rich_text の欠落は空として扱い、配列でない値は落とす', async () => {
+    // 「無い」は空のテキスト（Notion は caption を省くことがある）。
+    // 「配列でない値が入っている」のは読み取り失敗
+    const [node] = await normalize([block('paragraph', {})]);
+    assert.deepEqual((node as Extract<ArticleBlock, { kind: 'paragraph' }>).richText, []);
+    await assert.rejects(normalize([block('paragraph', { rich_text: {} })]), MalformedNotionBlockError);
+    await assert.rejects(normalize([block('paragraph', { rich_text: 0 })]), MalformedNotionBlockError);
+  });
+
   it('未知の rich text 種別は落とす', async () => {
     await assert.rejects(
       richTextOf([{ type: 'notion_が_将来_足す_型', plain_text: 'x' }]),

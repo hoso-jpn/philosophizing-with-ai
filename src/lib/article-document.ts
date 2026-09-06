@@ -120,7 +120,10 @@ const DEFERRED_KINDS: Partial<Record<ArticleBlock['kind'], { issue: string; reas
  * 「正常にビルドできた記事」として公開される。落として気づけるようにする。
  */
 export class DeferredArticleBlockError extends Error {
-  constructor(kind: ArticleBlock['kind'], context: { slug?: string; blockId?: string } = {}) {
+  constructor(
+    kind: ArticleBlock['kind'],
+    context: { slug?: string; blockId?: string; inline?: boolean } = {},
+  ) {
     const deferred = DEFERRED_KINDS[kind];
     const where = [
       context.slug ? `記事「${context.slug}」` : null,
@@ -129,8 +132,12 @@ export class DeferredArticleBlockError extends Error {
       .filter(Boolean)
       .join(' / ');
 
+    // インライン数式はブロックではないので、そう書かない。#8 の canary 記事は
+    // 本文中に数式を含むため、どちらで落ちたのかが分かる必要がある
+    const what = context.inline ? `インライン ${kind}` : `${kind} ブロック`;
+
     super(
-      `${kind} ブロックの描画はまだ実装されていません（${deferred?.issue ?? '後続 Issue'}）。` +
+      `${what}の描画はまだ実装されていません（${deferred?.issue ?? '後続 Issue'}）。` +
         (where ? `\n  ${where}` : '') +
         (deferred ? `\n  ${deferred.reason}` : '') +
         '\n本文の一部を黙って落とさないため、ビルドを止めます。',
@@ -152,6 +159,25 @@ export function assertArticleDocumentRenderable(
   for (const block of document.blocks) assertBlockRenderable(block, context);
 }
 
+/**
+ * rich text の中に描けないものが無いか確かめる。
+ *
+ * インライン数式はブロックではなく rich text 断片なので、`kind` を見るだけの
+ * 走査からは漏れる。漏らすと最終的に ArticleRichText コンポーネントが落とすが、
+ * そこには記事も断片の位置も無く、どの記事を直せばよいのか分からない診断になる。
+ */
+function assertRichTextRenderable(
+  nodes: readonly ArticleRichText[],
+  context: { slug?: string },
+  blockId: string,
+): void {
+  for (const node of nodes) {
+    if (node.kind === 'equation') {
+      throw new DeferredArticleBlockError('equation', { ...context, blockId, inline: true });
+    }
+  }
+}
+
 function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }): void {
   if (!RENDERABLE_KINDS.has(block.kind)) {
     throw new DeferredArticleBlockError(block.kind, {
@@ -161,14 +187,36 @@ function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }):
   }
 
   // 入れ子の中に未対応ブロックが隠れていても見つける
-  if (block.kind === 'list') {
-    for (const item of block.items) {
-      for (const child of item.children) assertBlockRenderable(child, context);
-    }
-    return;
-  }
-  if (block.kind === 'quote' || block.kind === 'callout') {
-    for (const child of block.children) assertBlockRenderable(child, context);
+  switch (block.kind) {
+    case 'paragraph':
+    case 'heading':
+      assertRichTextRenderable(block.richText, context, block.id);
+      return;
+
+    case 'list':
+      for (const item of block.items) {
+        assertRichTextRenderable(item.richText, context, item.id);
+        for (const child of item.children) assertBlockRenderable(child, context);
+      }
+      return;
+
+    case 'quote':
+    case 'callout':
+      assertRichTextRenderable(block.richText, context, block.id);
+      for (const child of block.children) assertBlockRenderable(child, context);
+      return;
+
+    case 'code':
+      // code の本文は文字列なので走査しない。caption だけが rich text
+      assertRichTextRenderable(block.caption, context, block.id);
+      return;
+
+    case 'divider':
+      return;
+
+    default:
+      // image / equation / table は上の RENDERABLE_KINDS で既に落ちている
+      return;
   }
 }
 
@@ -183,7 +231,16 @@ function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }):
  */
 const DECORATION_ORDER = ['code', 'underline', 'strikethrough', 'italic', 'bold'] as const;
 
-const DECORATION_TAGS: Record<(typeof DECORATION_ORDER)[number], string> = {
+/**
+ * 装飾に使う HTML タグ。**この 5 つ以外にはならない。**
+ *
+ * 描画側は受け取った文字列をそのまま要素名にするので、任意の文字列を許すと
+ * Notion 由来の値をタグ名として渡す変更が型検査を通ってしまう。閉じた union に
+ * しておくことで、その経路をコンパイル時に塞ぐ。
+ */
+export type DecorationTag = 'code' | 'u' | 'del' | 'em' | 'strong';
+
+const DECORATION_TAGS: Record<(typeof DECORATION_ORDER)[number], DecorationTag> = {
   code: 'code',
   underline: 'u',
   strikethrough: 'del',
@@ -195,7 +252,7 @@ const DECORATION_TAGS: Record<(typeof DECORATION_ORDER)[number], string> = {
  * 1 断片を包むタグを、内側から外側の順に返す。
  * 例: bold + code → `['code', 'strong']`（`<strong><code>…</code></strong>`）
  */
-export function decorationTags(node: ArticleRichText): string[] {
+export function decorationTags(node: ArticleRichText): DecorationTag[] {
   if (node.kind !== 'text') return [];
   return DECORATION_ORDER.filter((key) => node[key] === true).map((key) => DECORATION_TAGS[key]);
 }

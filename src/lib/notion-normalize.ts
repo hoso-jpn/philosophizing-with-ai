@@ -106,6 +106,20 @@ function normalizeRichTextItem(
     });
   }
 
+  // type が「あるのに文字列でない」のは読み取り失敗であって text ではない。
+  // 推測で text に寄せると、壊れた応答が空の段落として静かに公開される。
+  // notion-blocks.ts の semantic empty 判定も同じ入力を「判断不能＝本文あり」に
+  // 倒しており、こちらだけ text と決めつけると 2 つの層で結論が食い違う。
+  if (record.type !== undefined && typeof record.type !== 'string') {
+    throw new MalformedNotionBlockError({
+      ...ctx,
+      type: ctx.blockType,
+      detail: `rich_text の要素の type が文字列ではありません（${typeof record.type}）`,
+    });
+  }
+
+  // type が無い断片は text として扱う。Notion は必ず type を返すが、
+  // 簡略なフィクスチャや将来の省略に備えて、欠落は「素のテキスト」に倒す
   const type = asString(record.type) ?? 'text';
   const plainText = asString(record.plain_text);
 
@@ -154,6 +168,14 @@ function normalizeRichTextItem(
   };
 }
 
+/**
+ * rich text の配列を正規化する。
+ *
+ * **「無い」と「壊れている」を分ける。** 項目そのものが無い（undefined / null）のは
+ * 空のテキストであって異常ではない。Notion は caption を省くことがあり、
+ * 空の段落・空の見出しも正常な本文である。一方 **配列でない値が入っている**のは
+ * 読み取り失敗なので落とす。
+ */
 function normalizeRichText(
   value: unknown,
   ctx: { slug: string; blockId: string; blockType: string },

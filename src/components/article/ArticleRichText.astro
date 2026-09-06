@@ -17,9 +17,13 @@ interface Props {
 const { nodes } = Astro.props as Props;
 
 // KaTeX は Issue #7。数式を素のテキストで出すと、崩れた式が「正しい式」として
-// 公開される。描けないものは描かずに落とす
+// 公開される。描けないものは描かずに落とす。
+//
+// 通常はここへ来る前に assertArticleDocumentRenderable が記事単位で落とす
+// （そちらは slug とブロック ID を診断に出せる）。ここはその検査を通らない
+// 経路が増えたときのための多層防御。
 for (const node of nodes) {
-  if (node.kind === 'equation') throw new DeferredArticleBlockError('equation');
+  if (node.kind === 'equation') throw new DeferredArticleBlockError('equation', { inline: true });
 }
 ---
 {nodes.map((node: ArticleRichText) =>

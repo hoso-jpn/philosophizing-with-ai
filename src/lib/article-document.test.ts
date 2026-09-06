@@ -6,7 +6,7 @@ import {
   assertArticleDocumentRenderable,
   decorationTags,
 } from './article-document.ts';
-import type { ArticleBlock, ArticleRichText } from './article-document.ts';
+import type { ArticleBlock, ArticleRichText, DecorationTag } from './article-document.ts';
 import { safeHref } from './content-links.ts';
 
 const textNode = (overrides: Partial<Extract<ArticleRichText, { kind: 'text' }>> = {}): ArticleRichText => ({
@@ -192,5 +192,163 @@ describe('safeHref: ブラウザの URL 前処理を踏まえた回避を通さ�
 
   it('制御文字を含む相対パスも弾く', () => {
     assert.equal(safeHref('/posts/exa\tmple'), null);
+  });
+});
+
+describe('assertArticleDocumentRenderable: rich text 内のインライン数式も記事単位で拾う', () => {
+  const equation: ArticleRichText = { kind: 'equation', expression: 'y_{ij} = \\mu + g_i' };
+  const plain = textNode({ text: '式は ' });
+
+  /** 診断に slug・ブロック ID・担当 Issue が揃っているか */
+  const hasFullDiagnostics = (blockId: string) => (e: Error) =>
+    e instanceof DeferredArticleBlockError &&
+    e.message.includes('ai-stats-03') &&
+    e.message.includes(blockId) &&
+    e.message.includes('Issue #7') &&
+    e.message.includes('equation');
+
+  it('段落の中のインライン数式で落ちる', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          { blocks: [{ kind: 'paragraph', id: 'p1', richText: [plain, equation] }] },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('p1'),
+    );
+  });
+
+  it('見出しの中のインライン数式で落ちる', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          { blocks: [{ kind: 'heading', id: 'h1', level: 2, richText: [equation] }] },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('h1'),
+    );
+  });
+
+  it('リスト項目のインライン数式で落ちる（項目 ID を出す）', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          {
+            blocks: [
+              { kind: 'list', ordered: false, items: [{ id: 'li1', richText: [equation], children: [] }] },
+            ],
+          },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('li1'),
+    );
+  });
+
+  it('入れ子のリスト項目に隠れたインライン数式も見つける', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          {
+            blocks: [
+              {
+                kind: 'list',
+                ordered: false,
+                items: [
+                  {
+                    id: 'li1',
+                    richText: [plain],
+                    children: [
+                      {
+                        kind: 'list',
+                        ordered: true,
+                        items: [{ id: 'li2', richText: [equation], children: [] }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('li2'),
+    );
+  });
+
+  it('callout / quote の本文と子のインライン数式で落ちる', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          { blocks: [{ kind: 'callout', id: 'c1', richText: [equation], icon: null, children: [] }] },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('c1'),
+    );
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          {
+            blocks: [
+              {
+                kind: 'quote',
+                id: 'q1',
+                richText: [plain],
+                children: [{ kind: 'paragraph', id: 'q1a', richText: [equation] }],
+              },
+            ],
+          },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('q1a'),
+    );
+  });
+
+  it('code の caption のインライン数式で落ちる', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          { blocks: [{ kind: 'code', id: 'cd1', code: 'x', language: null, caption: [equation] }] },
+          { slug: 'ai-stats-03' },
+        ),
+      hasFullDiagnostics('cd1'),
+    );
+  });
+
+  it('インライン数式は「ブロック」とは書かない（#8 でどちらか分かる必要がある）', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable({
+          blocks: [{ kind: 'paragraph', id: 'p1', richText: [equation] }],
+        }),
+      (e: Error) => e.message.includes('インライン equation') && !e.message.includes('equation ブロック'),
+    );
+  });
+
+  it('数式を含まない本文は通る', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
+          { kind: 'paragraph', id: 'p1', richText: [plain] },
+          { kind: 'heading', id: 'h1', level: 3, richText: [textNode({ text: '見出し' })] },
+          { kind: 'code', id: 'cd', code: 'x', language: 'ts', caption: [textNode()] },
+          {
+            kind: 'list',
+            ordered: true,
+            items: [{ id: 'li', richText: [plain], children: [{ kind: 'divider', id: 'd' }] }],
+          },
+        ],
+      }),
+    );
+  });
+});
+
+describe('decorationTags: 戻り値が閉じた union に収まる', () => {
+  it('Notion 由来の文字列をタグ名にできない（型で閉じている）', () => {
+    const tags: DecorationTag[] = decorationTags(
+      textNode({ bold: true, italic: true, strikethrough: true, underline: true, code: true }),
+    );
+    const allowed: DecorationTag[] = ['code', 'u', 'del', 'em', 'strong'];
+    for (const tag of tags) assert.ok(allowed.includes(tag), `${tag} は許可タグに無い`);
+    assert.deepEqual(tags, allowed);
   });
 });
