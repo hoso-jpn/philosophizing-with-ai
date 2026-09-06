@@ -1,0 +1,82 @@
+---
+/**
+ * 本文中の図。
+ *
+ * **描けるのはローカル化済みの画像だけ。** Notion がホストする URL は署名付きで
+ * 有効期限があり、SSG では HTML へ焼き込まれて 1 時間後に壊れる。取得の段で
+ * localizeArticleDocumentMedia が `/notion-static/...` へ差し替えているので、
+ * ここへ残り 2 種類が来るのは実装の異常。素通しせずに落とす。
+ */
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'image' }>;
+}
+const { block } = Astro.props as Props;
+
+if (block.source.kind !== 'local') {
+  throw new Error(
+    `画像 ${block.id} がローカル化されていません（source: ${block.source.kind}）。\n` +
+      'Notion の署名付き URL を HTML へ出すと、期限切れで図が壊れます。\n' +
+      'src/lib/article-media.ts の localizeArticleDocumentMedia を通してください。',
+  );
+}
+
+const { src } = block.source;
+// alt は取得の段で決まっている（caption → SVG title の順。どちらも無ければビルドが落ちる）
+const alt = block.alt ?? '';
+---
+<figure class="article-figure">
+  <div class="article-figure__surface">
+    <img src={src} alt={alt} loading="lazy" decoding="async" />
+  </div>
+  {block.caption.length > 0 && (
+    <figcaption><ArticleRichText nodes={block.caption} /></figcaption>
+  )}
+</figure>
+
+<style>
+  .article-figure {
+    margin: 2em 0;
+    /* 記事の幅を超えない。大きな図でも本文の外へはみ出さない */
+    max-width: 100%;
+  }
+
+  /**
+   * 科学図の下地。
+   *
+   * AIと統計学03の SVG は背景が透明で、線と文字が濃い色で描かれている。
+   * dark theme の地の上へそのまま置くと読めない。SVG 自体は加工せず、
+   * 下に明るい面を敷いて可読性を確保する。
+   */
+  .article-figure__surface {
+    background: #fbfdfb;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    /* 画像自体が横に長い場合でも、記事幅の中でスクロールさせる */
+    overflow-x: auto;
+  }
+
+  .article-figure__surface img {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+    /* 下地の角丸と二重にしない */
+    border-radius: 0;
+  }
+
+  .article-figure figcaption {
+    margin-top: 0.6em;
+    font-size: 0.85em;
+    line-height: 1.7;
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 600px) {
+    .article-figure { margin: 1.5em 0; }
+    .article-figure__surface { padding: 0.6rem; }
+  }
+</style>

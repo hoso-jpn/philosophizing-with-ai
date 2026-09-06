@@ -17,6 +17,7 @@ import ArticleList from './ArticleList.astro';
 import ArticleQuote from './ArticleQuote.astro';
 import ArticleCallout from './ArticleCallout.astro';
 import ArticleCode from './ArticleCode.astro';
+import ArticleFigure from './ArticleFigure.astro';
 
 interface Props {
   blocks: readonly ArticleBlock[];
@@ -24,7 +25,7 @@ interface Props {
 const { blocks } = Astro.props as Props;
 
 for (const block of blocks) {
-  if (block.kind === 'image' || block.kind === 'equation' || block.kind === 'table') {
+  if (block.kind === 'equation' || block.kind === 'table') {
     throw new DeferredArticleBlockError(block.kind, { blockId: block.id });
   }
 }
@@ -45,6 +46,8 @@ for (const block of blocks) {
       return <hr />;
     case 'code':
       return <ArticleCode block={block} />;
+    case 'image':
+      return <ArticleFigure block={block} />;
     default:
       // 上のループで弾いているのでここへは来ない。網羅性の保険
       throw new DeferredArticleBlockError((block as ArticleBlock).kind);
