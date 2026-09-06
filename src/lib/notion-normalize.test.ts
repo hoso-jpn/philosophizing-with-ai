@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { ChildBlockFetcher } from './notion-normalize.ts';
 import {
   MalformedNotionBlockError,
   UnsupportedNotionBlockError,
@@ -50,13 +51,13 @@ const noChildren = async (): Promise<NotionBlock[]> => {
   throw new Error('子ブロックを取りに行くべきではありません');
 };
 
-const ctx = (fetchChildren = noChildren) => ({
+const ctx = (fetchChildren: ChildBlockFetcher = noChildren) => ({
   slug: 'test-article',
   pageId: 'page-1',
   fetchChildren,
 });
 
-const normalize = (blocks: NotionBlock[], fetchChildren?: typeof noChildren) =>
+const normalize = (blocks: NotionBlock[], fetchChildren?: ChildBlockFetcher) =>
   normalizeBlocks(blocks, ctx(fetchChildren));
 
 /* -------------------------------------------------------------- block kinds */
