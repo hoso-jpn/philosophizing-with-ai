@@ -49,10 +49,15 @@ export class ArticleImageError extends Error {
 export function altFromCaption(caption: string): string | null {
   const text = caption.replace(/\s+/g, ' ').trim();
   if (text === '') return null;
-  if (text.length <= MAX_ALT_LENGTH) return text;
+
+  // **コードポイント単位で数える。** UTF-16 の添字で切ると、絵文字や一部の
+  // CJK 拡張字（サロゲートペア）の途中で切れて孤立サロゲートが残り、
+  // 読み上げには壊れた文字として届く。
+  const characters = [...text];
+  if (characters.length <= MAX_ALT_LENGTH) return text;
 
   // 単語や句の途中で切らない。区切りが無ければ素直に切る
-  const head = text.slice(0, MAX_ALT_LENGTH);
+  const head = characters.slice(0, MAX_ALT_LENGTH).join('');
   const boundary = Math.max(head.lastIndexOf(' '), head.lastIndexOf('、'), head.lastIndexOf('。'));
   return `${(boundary > MAX_ALT_LENGTH / 2 ? head.slice(0, boundary) : head).trim()}…`;
 }

@@ -132,3 +132,106 @@ describe('extractImageSources', () => {
     assert.deepEqual(extractImageSources('<p>本文</p>'), []);
   });
 });
+
+describe('saveImageLocally — content-type を必ず検証する', () => {
+  /** fetch を差し替えて 1 件だけ取得させる。実ネットワークへは出ない */
+  async function withFetch(
+    response: Response,
+    run: (url: string) => Promise<string>,
+  ): Promise<{ result?: string; error?: Error }> {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => response) as typeof fetch;
+    // 毎回別の pathname を使う。既存ファイルがあると取得自体を飛ばすため
+    const url = `https://example.invalid/probe/${Math.random().toString(36).slice(2)}`;
+    try {
+      return { result: await run(url) };
+    } catch (error) {
+      return { error: error as Error };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  const imageResponse = (contentType: string, body = 'x') =>
+    new Response(body, { status: 200, headers: { 'content-type': contentType } });
+
+  it('画像でない content-type は落とす（URL の拡張子が既知でも）', async () => {
+    // 以前は URL が .svg で終われば content-type を見ずに通り、
+    // text/html の中身が .svg として公開されていた
+    for (const contentType of ['text/html', 'application/json', 'text/plain']) {
+      const { error } = await withFetch(imageResponse(contentType), (url) =>
+        saveImageLocally(`${url}.svg`, 'probe'),
+      );
+      assert.ok(error, `${contentType} を通した`);
+      assert.match(error!.message, /画像ではない応答/);
+    }
+  });
+
+  it('.png でも content-type が text/html なら落とす', async () => {
+    const { error } = await withFetch(imageResponse('text/html'), (url) =>
+      saveImageLocally(`${url}.png`, 'probe'),
+    );
+    assert.match(error!.message, /画像ではない応答/);
+  });
+
+  it('content-type が空でも落とす', async () => {
+    const { error } = await withFetch(new Response('x', { status: 200 }), (url) =>
+      saveImageLocally(`${url}.svg`, 'probe'),
+    );
+    assert.ok(error);
+  });
+
+  it('拡張子と content-type が一致すれば通る', async () => {
+    const { result, error } = await withFetch(imageResponse('image/svg+xml', '<svg/>'), (url) =>
+      saveImageLocally(`${url}.svg`, 'probe'),
+    );
+    assert.equal(error, undefined, error?.message);
+    assert.match(result!, /^\/notion-static\/[0-9a-f]{16}\.svg$/);
+  });
+
+  it('サブタイプの無い content-type: image は URL の拡張子で補う', async () => {
+    // Notion の実データに存在する（2026-09-06 実測）。ここを厳しくすると
+    // 正常な画像でビルドが止まる
+    const { result, error } = await withFetch(imageResponse('image'), (url) =>
+      saveImageLocally(`${url}.png`, 'probe'),
+    );
+    assert.equal(error, undefined, error?.message);
+    assert.match(result!, /\.png$/);
+  });
+
+  it('拡張子が無くても正しい画像 content-type なら通る', async () => {
+    const { result, error } = await withFetch(imageResponse('image/webp'), (url) =>
+      saveImageLocally(url, 'probe'),
+    );
+    assert.equal(error, undefined, error?.message);
+    assert.match(result!, /\.webp$/);
+  });
+
+  it('拡張子が無く content-type も判別できなければ落とす', async () => {
+    const { error } = await withFetch(imageResponse('image'), (url) => saveImageLocally(url, 'probe'));
+    assert.match(error!.message, /拡張子を判別できませんでした/);
+  });
+
+  it('拡張子と content-type が食い違えば落とす（配信は拡張子で決まるため）', async () => {
+    const { error } = await withFetch(imageResponse('image/png'), (url) =>
+      saveImageLocally(`${url}.svg`, 'probe'),
+    );
+    assert.match(error!.message, /食い違って/);
+  });
+
+  it('エラー文に署名クエリを出さない', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => imageResponse('text/html')) as typeof fetch;
+    try {
+      await saveImageLocally(
+        `https://example.invalid/probe/${Math.random().toString(36).slice(2)}.svg?X-Amz-Signature=SECRET123`,
+        'probe',
+      );
+      assert.fail('落ちるはず');
+    } catch (error) {
+      assert.doesNotMatch((error as Error).message, /SECRET123/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

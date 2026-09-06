@@ -151,6 +151,7 @@ export function assertLocalImagesExist() {
     hooks: {
       'astro:build:done': async ({ dir, logger }) => {
         const root = fileURLToPath(dir);
+        const rootResolved = path.resolve(root);
         const offenders = [];
         const checked = new Set();
 
@@ -164,14 +165,34 @@ export function assertLocalImagesExist() {
             if (!src.startsWith('/') || src.startsWith('//')) continue;
             if (IGNORED_PREFIXES.some((prefix) => src.startsWith(prefix))) continue;
 
-            // クエリとフラグメントを落とし、%E3%81%82 のような表記を実ファイル名へ戻す
-            const pathname = decodeURIComponent(src.split(/[?#]/)[0]);
+            // クエリとフラグメントを落とし、%E3%81%82 のような表記を実ファイル名へ戻す。
+            // 壊れた percent 表記は URIError になる。素の例外で落ちると原因の
+            // 分からないビルド失敗になるので、この検査の違反として扱う
+            let pathname;
+            try {
+              pathname = decodeURIComponent(src.split(/[?#]/)[0]);
+            } catch {
+              offenders.push(`${path.relative(root, file)}: ${src}（URL の % 表記が壊れています）`);
+              continue;
+            }
+
             const key = `${path.relative(root, file)}\u0000${pathname}`;
             if (checked.has(key)) continue;
             checked.add(key);
 
+            // 出力ディレクトリの外を指していないか。
+            //
+            // `/notion-static/../../../../etc/hosts` は path.join で `/etc/hosts` に
+            // なり、実在するので access() が通ってしまう。存在検査が
+            // **通ってはいけない入力で通る**のは、検査として意味を失う（fail open）。
+            const target = path.resolve(rootResolved, `.${pathname}`);
+            if (target !== rootResolved && !target.startsWith(rootResolved + path.sep)) {
+              offenders.push(`${path.relative(root, file)}: ${pathname}（出力ディレクトリの外を指しています）`);
+              continue;
+            }
+
             try {
-              await access(path.join(root, pathname));
+              await access(target);
             } catch {
               offenders.push(`${path.relative(root, file)}: ${pathname}`);
             }

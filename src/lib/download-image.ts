@@ -94,12 +94,52 @@ export async function saveImageLocally(url: string, context: string): Promise<st
     );
   }
 
-  const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim();
-  const extension = extensionHint ?? MIME_EXTENSIONS[contentType];
+  // **content-type を必ず見る。** 以前は URL の拡張子が判別できた時点で
+  // content-type を読まずに済ませていたため、`.svg` で終わる URL が text/html を
+  // 返しても、その中身が .svg として保存・公開されていた（実測）。
+  // 拡張子は「URL にそう書いてある」だけで、実際に届いたバイト列の種類ではない。
+  const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+
+  // 画像かどうかだけを content-type で決める。
+  //
+  // サブタイプまで既知であることは求めない。**Notion の実データに
+  // `content-type: image` という、サブタイプの無い応答が実在する**
+  // （intelligence-efficiency-ai-vs-brain のアイキャッチ。2026-09-06 実測）。
+  // ここを厳しくすると正常な画像でビルドが止まる。止めたいのは
+  // 「画像ではないものが画像として保存される」ことだけ。
+  if (contentType !== 'image' && !contentType.startsWith('image/')) {
+    throw new Error(
+      `画像ではない応答が返りました（${context}）: content-type=${contentType || '(なし)'}\n` +
+        `  ${parsed.origin}${parsed.pathname}\n` +
+        '  URL の拡張子ではなく、実際に返ってきた content-type で判断します。',
+    );
+  }
+
+  // 拡張子は content-type を優先し、判別できない画像種別だけ URL の拡張子で補う。
+  // 上のとおりサブタイプの無い応答があるため、この補完が要る
+  const mimeExtension = MIME_EXTENSIONS[contentType];
+  const extension = mimeExtension ?? extensionHint;
+
   if (!extension) {
     throw new Error(
       `画像の拡張子を判別できませんでした（${context}）: content-type=${contentType || '(なし)'}\n` +
-        `  ${parsed.origin}${parsed.pathname}`,
+        `  ${parsed.origin}${parsed.pathname}\n` +
+        `  扱えるのは ${Object.keys(MIME_EXTENSIONS).join(' / ')} です。`,
+    );
+  }
+
+  // 両方が分かっていて食い違う場合は落とす。
+  //
+  // 出力は拡張子でしか配信されない（`/notion-static/<hash>.svg` は
+  // image/svg+xml として返る）。中身が PNG なのに .svg と名付ければ、
+  // どちらの向きの食い違いでも読者には壊れた画像が見える。
+  // 推測でどちらかへ寄せず、Notion 側か配信元を直してもらう。
+  if (mimeExtension && extensionHint && mimeExtension !== extensionHint) {
+    throw new Error(
+      `URL の拡張子と content-type が食い違っています（${context}）\n` +
+        `  ${parsed.origin}${parsed.pathname}\n` +
+        `  URL の拡張子: ${extensionHint} / content-type: ${contentType}（${mimeExtension}）\n` +
+        '  拡張子で配信されるため、どちらへ寄せても壊れた画像になります。',
     );
   }
 

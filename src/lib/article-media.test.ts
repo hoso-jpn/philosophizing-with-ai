@@ -63,6 +63,9 @@ const ctx = { slug: 'ai-stats-03' };
 
 /* ---------------------------------------------------------------------- alt */
 
+/** article-media.ts の MAX_ALT_LENGTH と同じ値 */
+const MAX_ALT = 120;
+
 describe('altFromCaption', () => {
   it('caption をそのまま alt にする', () => {
     assert.equal(altFromCaption('図1 AMMI モデルの構造'), '図1 AMMI モデルの構造');
@@ -82,6 +85,41 @@ describe('altFromCaption', () => {
     const alt = altFromCaption(long)!;
     assert.ok(alt.length <= 121, `長すぎる: ${alt.length}`);
     assert.ok(alt.endsWith('…'));
+  });
+
+  it('サロゲートペアを割らない（孤立サロゲートを作らない）', () => {
+    const lone = (value: string) =>
+      [...value].some((ch) => {
+        const code = ch.codePointAt(0)!;
+        return code >= 0xd800 && code <= 0xdfff;
+      });
+
+    // 境界の直前・境界上・境界の直後に絵文字を置く
+    for (const offset of [-1, 0, 1]) {
+      const caption = 'あ'.repeat(MAX_ALT + offset) + '🧬' + 'い'.repeat(40);
+      const alt = altFromCaption(caption)!;
+      assert.equal(lone(alt), false, `offset=${offset} で孤立サロゲートが残った: ${JSON.stringify(alt)}`);
+    }
+
+    // 絵文字だけの長文、CJK 拡張字（サロゲートペア）だけの長文
+    for (const caption of ['🧬'.repeat(200), '\u{20B9F}'.repeat(200)]) {
+      const alt = altFromCaption(caption)!;
+      assert.equal(lone(alt), false, `孤立サロゲートが残った: ${JSON.stringify(alt.slice(-4))}`);
+      // コードポイント数で数えている（省略記号 1 文字を足した長さ）
+      assert.equal([...alt].length, MAX_ALT + 1);
+    }
+  });
+
+  it('ASCII / 日本語のどちらでも空 alt にならない', () => {
+    for (const caption of ['a'.repeat(300), 'あ'.repeat(300), 'a '.repeat(200)]) {
+      const alt = altFromCaption(caption)!;
+      assert.ok(alt.replace('…', '').trim().length > 0, `空になった: ${JSON.stringify(alt)}`);
+    }
+  });
+
+  it('120 コードポイント以下はそのまま返す', () => {
+    assert.equal(altFromCaption('a'.repeat(MAX_ALT)), 'a'.repeat(MAX_ALT));
+    assert.equal(altFromCaption('🧬'.repeat(MAX_ALT)), '🧬'.repeat(MAX_ALT));
   });
 
   it('区切りがあれば語の途中で切らない', () => {
