@@ -188,16 +188,20 @@ export function isBlockSemanticallyEmpty(block: NotionBlock): boolean {
  * plain_text 以外に意味を持つ。plain_text だけで空と判定すると、数式や参照しか
  * 置かれていない本文を「空」と見なして legacy Content へ黙って戻してしまう。
  *
- * そこで **`type` が `text` 以外だと分かった時点で空ではないと言い切る**。
- * `type` が読めない断片（テストの簡略フィクスチャや想定外の応答）は plain_text で
- * 判定する。判断できない形のときは空ではない側へ倒す。
+ * そこで **`type` が `text` 以外なら、その時点で空ではないと言い切る**。
+ *
+ * `type` が無い断片だけは plain_text で判定する。テストの簡略フィクスチャが
+ * この形で、実際の Notion も text 断片以外に type を落とすことはない。
+ * 一方 `type` が文字列ですらない断片は「読めなかった」のであって「text だった」
+ * わけではないので、空とは言い切らない（判断できない形は空ではない側へ倒す）。
  */
 function isBlankTextFragment(item: unknown): boolean {
   if (typeof item !== 'object' || item === null) return false;
 
   const { type, plain_text: text } = item as { type?: unknown; plain_text?: unknown };
-  // mention / equation など。plain_text が空でも本文として意味がある
-  if (typeof type === 'string' && type !== 'text') return false;
+  // mention / equation など。plain_text が空でも本文として意味がある。
+  // type が壊れている場合もここで空ではない側へ倒す
+  if (type !== undefined && type !== 'text') return false;
 
   return typeof text === 'string' && text.trim() === '';
 }

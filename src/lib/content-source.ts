@@ -118,7 +118,18 @@ export async function resolveArticleContentSource(
 /**
  * Notion のページ本文に対して URL / 画像の不変条件が実装済みか。
  *
- * **Issue #6 が完了したら true にする。それがこのフラグの唯一の用途。**
+ * **Issue #6 での外し方（フラグを true にするだけにしないこと）**
+ *
+ * このフラグを `true` に書き換えるだけなら 1 行の差分で済んでしまい、実際に検査が
+ * 動いているのかレビューで確かめられない。#6 では次の順に置き換える。
+ *
+ *   1. ページ本文（ArticleDocument）に対する URL / 画像の検査を実装し、
+ *      取得パイプラインへ結線する
+ *   2. その検査の呼び出しで assertPageBodySourcesAreGuarded を **置き換える**
+ *   3. このフラグと UnguardedPageBodySourceError を **削除する**
+ *
+ * つまり #6 の差分には必ず検査の実装が含まれる。フラグだけが true になった差分は
+ * 差し戻すこと。
  *
  * legacy Content には次の検査が掛かっている（すべて `post.content` が対象）。
  *
@@ -150,8 +161,10 @@ export class UnguardedPageBodySourceError extends Error {
         'このまま公開すると、内部リンクがドメイン変更で壊れ、期限付きの S3 画像が\n' +
         '1 時間後に全滅します。次のどちらかを行ってください。\n' +
         '  1. src/lib/migration-allowlist.ts から slug を外す（legacy Content へ戻ります）\n' +
-        '  2. Issue #6 を実装し、src/lib/content-source.ts の\n' +
-        '     PAGE_BODY_INVARIANTS_IMPLEMENTED を true にする',
+        '  2. Issue #6 でページ本文への URL / 画像の検査を実装して結線し、\n' +
+        '     この暫定 guard をその検査で置き換える\n\n' +
+        'PAGE_BODY_INVARIANTS_IMPLEMENTED を true にするだけでは駄目です。\n' +
+        '検査が無いまま guard だけが黙る状態になります。',
     );
     this.name = 'UnguardedPageBodySourceError';
   }
@@ -160,9 +173,9 @@ export class UnguardedPageBodySourceError extends Error {
 /**
  * 不変条件が未実装のページ本文が公開経路へ進んでいないことを確かめる。
  *
- * 取得パイプラインの中で呼ぶ。記事ページのテンプレートではなくここに置くのは、
- * テンプレート側の throw が Issue #5 で renderer に置き換わって消えるため。
- * ここなら renderer が入っても、#6 が済むまでビルドが止まり続ける。
+ * 取得パイプラインの中で呼ぶ。記事ページのテンプレートではなくここに置いた理由は
+ * Issue #5 で実証された。あちらの暫定 throw は予定どおり renderer へ置き換わって
+ * 消えたが、**この guard は残っているのでページ本文はまだ公開経路へ進めない**。
  *
  * allowlist が空のあいだ `notion-page` は 1 件も生まれないので、この検査は
  * 現状の全記事に対して素通りする。

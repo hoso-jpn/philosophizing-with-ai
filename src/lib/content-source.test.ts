@@ -336,7 +336,16 @@ describe('assertPageBodySourcesAreGuarded: #6 未実装のページ本文を公�
       (e: Error) =>
         e.message.includes('ai-stat-03') &&
         e.message.includes('migration-allowlist') &&
-        e.message.includes('PAGE_BODY_INVARIANTS_IMPLEMENTED'),
+        e.message.includes('Issue #6'),
+    );
+  });
+
+  it('エラー文がフラグを true にするだけの解除を勧めない', () => {
+    // #6 は検査を実装して guard を置き換える。フラグだけ true にすると
+    // 検査が無いまま guard が黙る
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
+      (e: Error) => e.message.includes('true にするだけでは駄目'),
     );
   });
 
@@ -402,5 +411,55 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
     assert.match(error.message, /migration-allowlist/);
     assert.match(error.message, /Published/);
     assert.equal(error.name, 'UnknownMigratedSlugError');
+  });
+});
+
+describe('Issue #5 後も #4 の安全契約が効いている', () => {
+  it('migration allowlist は空のまま（canary 有効化は Issue #8）', () => {
+    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], []);
+  });
+
+  it('ページ本文の不変条件フラグは false のまま（実装は Issue #6）', () => {
+    // renderer が入っても、#6 が済むまでページ本文は公開経路へ進めない
+    assert.equal(PAGE_BODY_INVARIANTS_IMPLEMENTED, false);
+  });
+
+  it('renderer があっても、ページ本文 source は取得の段で止まる', async () => {
+    // Issue #5 で [slug].astro の暫定 throw は renderer に置き換わった。
+    // 安全性がそちらに依存していないことを、データ層だけで確かめる
+    const source = await resolveArticleContentSource(article(), {
+      fetchPageBlocks: async () => [paragraph('ページ本文')],
+      usesPageBody: allowAll,
+    });
+    assert.equal(source.kind, 'notion-page');
+
+    assert.throws(
+      () => assertPageBodySourcesAreGuarded([{ slug: 'migrated-post', contentSource: source }]),
+      UnguardedPageBodySourceError,
+    );
+  });
+
+  it('legacy 記事は guard を素通りする（既存記事の経路は変わらない）', async () => {
+    const source = await resolveArticleContentSource(article(), {
+      fetchPageBlocks: neverFetch,
+      usesPageBody: allowNone,
+    });
+    assert.deepEqual(source, { kind: 'legacy', content: '<p>legacy 本文</p>' });
+    assert.doesNotThrow(() =>
+      assertPageBodySourcesAreGuarded([{ slug: 'migrated-post', contentSource: source }]),
+    );
+  });
+
+  it('正規化で未対応ブロックに当たっても legacy へ落ちない', async () => {
+    // 「本文が空だった」と取り違えて古い本文へ戻さない。#4 と同じ方針
+    await assert.rejects(
+      resolveArticleContentSource(article({ content: '<p>まだ読める legacy 本文</p>' }), {
+        fetchPageBlocks: async () => [
+          { id: 'b1', type: 'synced_block', has_children: false, synced_block: {} },
+        ],
+        usesPageBody: allowAll,
+      }),
+      /synced_block/,
+    );
   });
 });
