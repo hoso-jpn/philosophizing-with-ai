@@ -18,9 +18,9 @@ const Tag = block.ordered ? 'ol' : 'ul';
 ---
 <Tag>
   {block.items.map((item) => (
-    <li>
-      <ArticleRichText nodes={item.richText} />
-      {item.children.length > 0 && <ArticleBlocks blocks={item.children} />}
-    </li>
+    /* li の中に余計な空白を入れない。入れ子リストの前後に空テキストノードができる */
+    <li><ArticleRichText nodes={item.richText} />{item.children.length > 0 && (
+      <ArticleBlocks blocks={item.children} />
+    )}</li>
   ))}
 </Tag>
