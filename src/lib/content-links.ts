@@ -201,3 +201,44 @@ export function formatReferencedHosts(counts: Map<string, number>): string[] {
     .sort(([hostA, countA], [hostB, countB]) => countB - countA || hostA.localeCompare(hostB))
     .map(([host, count]) => `  ${String(count).padStart(3)}  ${host}`);
 }
+
+/**
+ * リンクとして出してよいスキームだけを通す。
+ *
+ * D-19 のとおり URL の規則はこのファイルに集約する。ページ本文の renderer が
+ * 独自のスキーム判定を持つと、規則が 2 か所に分かれて必ず食い違う。
+ *
+ * ここが見るのは **スキームの安全性だけ**。自サイトへの絶対 URL の検出
+ * （assertNoSelfReferencingUrls）は Notion のページ本文に対してはまだ動いておらず、
+ * それは Issue #6 の担当。ここでその一部を先取りすると、#6 の検査が
+ * 「もう半分やってある」状態になって取りこぼす。
+ *
+ * 相対パス（/posts/<slug>、#anchor、?query）はそのまま通す。内部リンクは
+ * 相対パスで書く決まりなので、これを弾くと正しい書き方が使えなくなる。
+ */
+const SAFE_URL_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+/**
+ * @returns 出力してよい href。危険なら null（呼び出し側はリンクにしない）
+ */
+export function safeHref(href: string | null | undefined): string | null {
+  if (typeof href !== 'string') return null;
+
+  const trimmed = href.trim();
+  if (trimmed === '') return null;
+
+  // 相対 URL。スキームを持たないので javascript: 等にはなりえない。
+  // ベースは判定のためだけのもので、戻り値には使わない
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed, 'https://example.invalid/');
+  } catch {
+    return null; // URL として解釈できないものは出さない
+  }
+
+  // 相対のまま書かれていた場合は、書かれたとおりに返す（絶対化しない）
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
+  if (!hasScheme) return trimmed;
+
+  return SAFE_URL_SCHEMES.has(parsed.protocol) ? trimmed : null;
+}
