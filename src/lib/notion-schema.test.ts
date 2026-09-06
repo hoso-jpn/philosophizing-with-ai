@@ -128,6 +128,51 @@ describe('parsePost: 任意項目は警告に留める', () => {
   });
 });
 
+describe('parsePost: Content の必須性は本文 source によって変わる', () => {
+  /** 本文をページ本文へ移した記事だけ true を返す判定 */
+  const migrated = (slug: string) => slug === 'rtx-5090';
+
+  it('legacy 記事は Content が必須（プロパティごと消えたら例外）', () => {
+    assert.throws(() => parsePost(page({ Content: undefined })), NotionSchemaError);
+  });
+
+  it('legacy 記事は Content が空でも例外（従来どおり）', () => {
+    assert.throws(() => parsePost(page({ Content: rt('') })), NotionSchemaError);
+    assert.throws(() => parsePost(page({ Content: rt('   ') })), NotionSchemaError);
+  });
+
+  it('page-body 記事は Content が無くても parse できる', () => {
+    const post = parsePost(page({ Content: undefined }), [], migrated);
+    assert.equal(post.slug, 'rtx-5090');
+    assert.equal(post.content, '');
+    assert.equal(post.title, 'AIと実装01；RTX 5090 で動かす');
+  });
+
+  it('page-body 記事は Content が空でも parse できる', () => {
+    assert.equal(parsePost(page({ Content: rt('') }), [], migrated).content, '');
+  });
+
+  it('page-body 記事でも Content が残っていればそのまま読む（fallback 用）', () => {
+    assert.equal(parsePost(page(), [], migrated).content, '<!-- wp:paragraph --><p>本文</p>');
+  });
+
+  it('allowlist に無い slug は移行対象外として扱う', () => {
+    const other = page({ Slug: rt('other-post'), Content: rt('') });
+    assert.throws(() => parsePost(other, [], migrated), NotionSchemaError);
+  });
+
+  it('Content プロパティが無い場合のエラー文は allowlist を案内する', () => {
+    assert.throws(
+      () => parsePost(page({ Content: undefined })),
+      (e: Error) => e.message.includes('migration-allowlist'),
+    );
+  });
+
+  it('既定の判定では全記事が legacy 扱い（allowlist が空のため）', () => {
+    assert.throws(() => parsePost(page({ Content: rt('') })), NotionSchemaError);
+  });
+});
+
 const ann = (overrides: Record<string, boolean> = {}) => ({
   bold: false, italic: false, strikethrough: false, underline: false, code: false,
   color: 'default', ...overrides,

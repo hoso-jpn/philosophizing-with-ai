@@ -6,11 +6,21 @@ import {
 } from './content-links.ts';
 import { parsePost, type ParseWarning } from './notion-schema.ts';
 import {
+  UnknownMigratedSlugError,
+  findUnknownMigratedSlugs,
+} from './migration-allowlist.ts';
+import {
+  assertPageBodySourcesAreGuarded,
+  createPageBodyLoader,
+  resolveArticleContentSource,
+  type ArticleContentSource,
+} from './content-source.ts';
+import {
   assertNoExternalContentImages,
   localizeContentImages,
   saveImageLocally,
 } from './download-image.ts';
-import type { Post } from './types.ts';
+import type { ParsedPost, Post } from './types.ts';
 
 const NOTION_VERSION = '2022-06-28';
 
@@ -59,6 +69,20 @@ async function queryDatabase(filter?: unknown, sorts?: unknown): Promise<unknown
   return results;
 }
 
+/**
+ * ブロックの子を 1 ページ分取得する（ページ本文の取得もこれ）。
+ *
+ * `blocks/<id>/children` はページ本文の取得とブロックの子の取得を兼ねるので、
+ * Issue #5 で `has_children` を辿るときもこの関数をそのまま使える。
+ * 失敗は notionFetch がそのまま投げる。ここで握り潰さないことが Issue #4 の要点で、
+ * 取得の失敗を「本文が空」と取り違えると移行済み記事が黙って古い本文へ戻る。
+ */
+function fetchBlockChildrenPage(blockId: string, cursor: string | null): Promise<unknown> {
+  const query = new URLSearchParams({ page_size: '100' });
+  if (cursor) query.set('start_cursor', cursor);
+  return notionFetch(`blocks/${blockId}/children?${query}`);
+}
+
 function reportWarnings(warnings: ParseWarning[]): void {
   for (const w of warnings) console.warn(`[notion] ${w.slug}: ${w.message}`);
 }
@@ -75,7 +99,7 @@ function reportWarnings(warnings: ParseWarning[]): void {
  * ダウンロードが実際に働くのは Phase 5（本文を Notion のページ本文へ移し、
  * 画像が Notion の画像ブロックになったとき）。
  */
-async function localizeImages(post: Post): Promise<Post> {
+async function localizeImages(post: ParsedPost): Promise<ParsedPost> {
   return {
     ...post,
     heroImage: post.heroImage ? await saveImageLocally(post.heroImage, post.slug) : null,
@@ -100,7 +124,14 @@ const dateAscending = [{ property: 'Date', direction: 'ascending' }];
  * dev サーバーではメモ化しない。Notion を編集して再読み込みしても反映されなくなる。
  */
 let postsSnapshot: Promise<Post[]> | null = null;
-const MEMOIZE = !import.meta.env?.DEV;
+const IS_DEV = Boolean(import.meta.env?.DEV);
+const MEMOIZE = !IS_DEV;
+
+/**
+ * ページ本文の取得。ビルド 1 回のあいだ、同じページを 2 度取りに行かない。
+ * dev サーバーではメモ化しない（Notion を編集して再読み込みしても反映されなくなる）。
+ */
+const loadPageBody = createPageBodyLoader(fetchBlockChildrenPage, { cache: MEMOIZE });
 
 export function getPosts(): Promise<Post[]> {
   if (!MEMOIZE) return fetchPosts();
@@ -137,6 +168,11 @@ async function fetchPosts(): Promise<Post[]> {
     );
   }
 
+  // 移行 allowlist の綴り違い・取り残しをここで見つける。件数チェックのあと、
+  // ページ本文の取得より前に置く。「移行したつもりで 1 件も移行されていない」
+  // 状態を静かに許さないため
+  assertMigrationAllowlistMatches(posts.map((post) => post.slug));
+
   // 本文が参照している全ホストを出す。禁止リストは漏れるが一覧は漏れない。
   // 実際、特定文字列だけを見ていたために旧プレビューホストへの参照を取りこぼした
   console.log('[content] 参照ホスト一覧:');
@@ -155,7 +191,82 @@ async function fetchPosts(): Promise<Post[]> {
   // ローカル化を通したあとの事後条件。外部 URL が残っていたら実装の異常
   assertNoExternalContentImages(localized);
 
-  return localized;
+  return resolveContentSources(localized);
+}
+
+/**
+ * migration allowlist の slug が実在の公開記事を指していることを確かめる。
+ *
+ * allowlist は完全一致の照合しかしないので、綴りを 1 文字間違えるとその記事は
+ * legacy のまま何事もなくビルドが通る。fail closed ではあるが、「移行したつもりで
+ * 実際には 1 件も移行されていない」状態を静かに許すことになる。#8 で canary の
+ * slug を有効化するとき、その取り違えに気づけるようにしておく。
+ *
+ * 本番ビルドでは落とす。dev では警告に留める。dev は Notion 側を編集しながら
+ * 動かす場で、対象記事を Published にする前に allowlist を先に書くことがあるため。
+ * 本番へ出る経路（production build）は従来どおり fail closed。
+ */
+function assertMigrationAllowlistMatches(publishedSlugs: string[]): void {
+  const unknown = findUnknownMigratedSlugs(publishedSlugs);
+  if (unknown.length === 0) return;
+
+  const error = new UnknownMigratedSlugError(unknown);
+  if (!IS_DEV) throw error;
+  console.warn(`[content] ${error.message}`);
+}
+
+/**
+ * 記事ごとに本文の正本を決める。
+ *
+ * ローカル化のあとに置く。legacy source の中身はローカル化を通した本文そのもので
+ * なければならず、先に決めてしまうと `contentSource.content` だけ画像 URL が
+ * 書き換わっていない、という食い違いが生まれる。
+ *
+ * migration allowlist が空のあいだ、ここは全記事について legacy を返すだけで、
+ * Notion への追加の問い合わせも起きない。
+ */
+async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
+  const resolved = await Promise.all(
+    posts.map(async (post) => ({
+      ...post,
+      // 失敗を握り潰さない。Notion の障害を「本文が空」と取り違えて legacy へ
+      // 戻すと、移行済み記事が黙って古い本文で公開される（Issue #4）
+      contentSource: await resolveArticleContentSource(post, { fetchPageBlocks: loadPageBody }),
+    })),
+  );
+
+  reportContentSources(resolved);
+
+  // ページ本文には URL / 画像の不変条件がまだ掛かっていない（Issue #6）。
+  // 記事ページのテンプレートではなくここで止める。あちらの throw は Issue #5 で
+  // renderer に置き換わって消えるが、この検査は残り続ける。
+  // 内訳のログより後に置く。何が引っかかったかを先に見せたい
+  assertPageBodySourcesAreGuarded(resolved);
+
+  return resolved;
+}
+
+/**
+ * 本文 source の内訳をビルドログへ出す。
+ *
+ * 移行は記事単位で少しずつ進むので、「いま何本がページ本文で描かれているか」は
+ * 毎ビルド目に見えている必要がある。allowlist に入れたのに legacy へ落ちている
+ * 記事（ページ本文が空だった）にも、ここで気づける。
+ */
+function reportContentSources(posts: Post[]): void {
+  const byKind = new Map<ArticleContentSource['kind'], string[]>();
+  for (const post of posts) {
+    const bucket = byKind.get(post.contentSource.kind);
+    if (bucket) bucket.push(post.slug);
+    else byKind.set(post.contentSource.kind, [post.slug]);
+  }
+
+  const pageBody = byKind.get('notion-page') ?? [];
+  console.log(
+    `[content] 本文 source: legacy ${(byKind.get('legacy') ?? []).length} 件 / ` +
+      `notion-page ${pageBody.length} 件`,
+  );
+  for (const slug of pageBody) console.log(`  notion-page: ${slug}`);
 }
 
 /** webhook のフィルタに必要な最小限だけを読んだページの状態 */

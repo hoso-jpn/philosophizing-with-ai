@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { Post } from './types.ts';
+import { usesPageBodySource } from './migration-allowlist.ts';
+import type { ParsedPost } from './types.ts';
 
 /**
  * Notion のページオブジェクトを検証して Post に変換する。
@@ -48,12 +49,23 @@ const requiredProperties = z.object({
   Slug: richTextProp,
   Date: dateProp,
   Published: checkboxProp,
-  Content: richTextProp,
   Tags: tagsProp,
 });
 
+/**
+ * legacy 本文。**必須かどうかは記事によって変わる**ため、型の上では任意にしてある。
+ *
+ * - 本文を Notion のページ本文へ移した記事（migration allowlist 内）は空でよい
+ * - それ以外の記事は必須・非空。空なら parsePost が例外にする
+ *
+ * 型を任意にしただけで検査は緩めていない。既存記事に対しては
+ * 「Content プロパティが無い」も「Content が空」も従来どおりビルドを止める。
+ */
+const legacyContentProperty = richTextProp.optional();
+
 /** 欠けていても警告に留めるプロパティ */
 const optionalProperties = z.object({
+  Content: legacyContentProperty,
   Description: richTextProp.optional(),
   HeroImage: filesProp.optional(),
   /** Phase 4 で使う。Notion 側に追加されるまでは存在しない */
@@ -159,8 +171,16 @@ export type ParseWarning = { slug: string; message: string };
  * にある 25 件制限は rich_text 断片そのものではなく、rich_text 内の page/person
  * mention など参照値の完全性に関する制限。装飾やリンクで 25 断片以上になった正常な
  * 本文を「切り捨て」と誤判定しないため。本文は Phase 5 でページ本文へ移行する予定。
+ *
+ * `Content` の必須性は記事によって変わる。本文を Notion のページ本文へ移した記事
+ * （migration allowlist 内）だけが空を許され、それ以外は従来どおり非空が必須。
+ * allowlist は既定で版管理された一覧を見る。判定を差し替えられるのはテスト用。
  */
-export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
+export function parsePost(
+  page: unknown,
+  warnings: ParseWarning[] = [],
+  usesPageBody: (slug: string) => boolean = usesPageBodySource,
+): ParsedPost {
   const pageId = (page as { id?: string } | null)?.id ?? '(id 不明)';
   const parsed = notionPage.safeParse(page);
 
@@ -175,7 +195,7 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   const titlePrefix = plain(props['名前'].title).trim();
   const titleBody = plain(props.Title.rich_text).trim();
   const slug = plain(props.Slug.rich_text).trim();
-  const content = markdown(props.Content.rich_text);
+  const content = props.Content ? markdown(props.Content.rich_text) : '';
 
   if (!slug) {
     throw new NotionSchemaError(pageId, '  - Slug: 空です。URL を決められないため公開できません');
@@ -186,8 +206,17 @@ export function parsePost(page: unknown, warnings: ParseWarning[] = []): Post {
   if (!props.Date.date?.start) {
     throw new NotionSchemaError(pageId, '  - Date: 未設定です');
   }
-  if (!content.trim()) {
-    throw new NotionSchemaError(pageId, '  - Content: 本文が空です');
+  // 本文がページ本文へ移っている記事だけ、Content が無くてよい。
+  // その場合に本文がどこにも無いことは resolveArticleContentSource が捕まえる
+  // （ページ本文を実際に取得してみるまで確定しないため、ここでは判定できない）。
+  if (!content.trim() && !usesPageBody(slug)) {
+    throw new NotionSchemaError(
+      pageId,
+      props.Content
+        ? '  - Content: 本文が空です'
+        : '  - Content: プロパティがありません（本文をページ本文へ移した記事なら ' +
+            'src/lib/migration-allowlist.ts に slug を追加してください）',
+    );
   }
 
   const description = plain(props.Description?.rich_text ?? []).trim();

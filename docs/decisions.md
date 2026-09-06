@@ -161,3 +161,41 @@ URL不変条件は1箇所に集約し、Notion本文・Astroテンプレート�
 ## D-32 — property ID は正規化して比較
 
 Webhook の `updated_properties` と REST API の property ID は percent-encoding 表記が異なる可能性がある。比較時に decode して同一視し、公開→非公開の検知を表記差に依存させない。
+
+## D-33 — 本文 source を型で分ける
+
+記事本文を `content: string` 一本で持つのをやめ、`ArticleContentSource`（`legacy` / `notion-page` の discriminated union）を正本にする。描画側は必ず `kind` で分岐する。文字列だけでは legacy `Content` プロパティと Notion のページ本文（block の配列）を区別できず、移行の途中で取り違えても型が助けてくれない。
+
+`Post.content` は legacy source の中身として残すが、描画には使わない。
+
+## D-34 — 移行は allowlist で記事単位に行う
+
+canary 期間中の切り替えは、版管理された `src/lib/migration-allowlist.ts` の slug 一覧で決める。
+
+「ページ本文が空でなければページ本文を使う」だけにすると、legacy `Content` で公開中の記事のページ本文にたまたま何か書かれていた瞬間に本文が差し替わる。Notion のページには編集の副産物が残っていることがあるため、判定より前に明示的な一覧を通す。
+
+初期値は空。戻すときは slug を配列から消す。
+
+## D-35 — 取得の失敗を空本文として扱わない
+
+Notion のページ本文の取得が失敗した場合、legacy `Content` へフォールバックせずビルドを失敗させる。対象は network error / timeout / 429 / 5xx / 壊れた応答 / JSON・スキーマの不一致 / ページネーション途中の失敗 / 子ブロック取得の失敗。
+
+握り潰すと、Notion の一時的な障害のたびに移行済み記事が黙って古い本文へ戻り、しかもビルドは成功するので誰も気づけない。Vercel は成功したビルドにだけ本番エイリアスを張るので、落とせば直前の正常なデプロイがそのまま残る。
+
+フォールバックしてよいのは、**取得そのものが正常に完了し、本文が意味的に空だと判断できた場合だけ**。
+
+## D-36 — 本文が空であることの定義
+
+「ブロックが 1 件以上ある」を本文ありの条件にしない。
+
+- ブロック 0 件 → 空
+- 空 paragraph だけ → 空
+- 空白のみの paragraph だけ → 空
+- divider / image / equation / table / code など、テキスト以外に意味がある種別を含む → 空ではない
+- 未知の種別、判定できない形の応答 → 空ではない（本文ありに倒す）
+
+空と判定した結果は legacy へ戻る方向なので、迷ったら「空ではない」と言う方が安全側になる。
+
+## D-37 — Notion API version は本文移行と分けて上げる
+
+本文 source の移行（Issue #4）では `Notion-Version: 2022-06-28` を変えない。API version の更新は Issue #14 で単独で扱う。content model の移行と API version の移行を同じ変更に混ぜると、出力が変わった原因を切り分けられなくなる。
