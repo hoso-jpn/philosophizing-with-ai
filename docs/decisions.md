@@ -234,11 +234,11 @@ legacy は HTML 文字列であってブロックの木ではなく、無理に�
 
 描画できないノードに当たったら、空で描かずに落とす。
 
-## D-42 — ページ本文の safety guard は #6 まで残す
+## D-42 — ページ本文の safety guard は #6 まで残す（Issue #6 で解消済み）
 
-Issue #5 で `src/pages/posts/[slug].astro` の暫定 throw は renderer に置き換わったが、`assertPageBodySourcesAreGuarded` は残す。ページ本文には URL / 画像の不変条件（D-13 / D-19 / D-15）がまだ掛かっていないため。
+Issue #5 で `src/pages/posts/[slug].astro` の暫定 throw は renderer に置き換わったが、`assertPageBodySourcesAreGuarded` は残した。ページ本文には URL / 画像の不変条件（D-13 / D-19 / D-15）がまだ掛かっていなかったため。
 
-#6 では検査を実装して結線し、この guard を **置き換えて削除する**。`PAGE_BODY_INVARIANTS_IMPLEMENTED` を `true` にするだけの差分は差し戻す。検査が無いまま guard が黙る状態になるため。
+**Issue #6 で予定どおり解消した。** `PAGE_BODY_INVARIANTS_IMPLEMENTED` / `UnguardedPageBodySourceError` / `assertPageBodySourcesAreGuarded` は削除し、取得パイプラインが実際の検査（D-44 / D-45）を呼ぶ。フラグを `true` にするだけの解除は最後まで行っていない。
 
 ### #6 で必ず確認する URL の形
 
@@ -254,3 +254,37 @@ Issue #5 の `safeHref` が見るのは **スキームの安全性だけ**で、
 - 既存の `app.notion.com` の扱い（D-13）
 - 自サイトを指す絶対 URL 全般
 - `/posts/<Notion の UUID>`
+
+## D-43 — Notion のホストは `app.notion.com` だけではない
+
+`notion.so`（`www.notion.so` を含む）も自サイト扱いにする。Notion のページメンションの href はこの形になり、`app.notion.com` と同じく **読者が開けないリンク**である。サブドメインが増えても取りこぼさないようサフィックスで判定する。
+
+2026-09-06 時点の公開記事に `notion.so` への参照が無いことを確認したうえで追加した。
+
+## D-44 — ページ本文の画像はビルド時にローカル化する
+
+Notion がホストする画像 URL は署名付きで有効期限がある（`X-Amz-Expires=3600`）。SSG では URL がビルド時に HTML へ焼き込まれるため、そのまま出すと 1 時間後に図が全滅する。外部 URL も同じ扱いにする（相手のサーバーが消えれば同じことが起き、legacy 本文の方針 D-15 とも揃う）。
+
+- ダウンロードは既存の `src/lib/download-image.ts` を再利用する。MIME 判定・SVG 対応・クエリを除いた安定ファイル名・再取得の抑止が既にあり、別系統を作ると挙動が 2 つに分かれる
+- `ArticleImageSource` に `local` を足し、**描画してよいのはこれだけ**にする。`localizeArticleDocumentMedia` を通した本文だけがその形になり、事後条件 `assertNoRemoteArticleImages` が確かめる
+- SVG は SVG のまま保存する。ラスタへ変換しない
+- alt は caption から作り、caption が無ければ SVG の `<title>` を読む。どちらも無ければビルドを止める。**Notion の画像ブロックに alt 専用の項目は無い**ので、無いものを想定しない。科学図に `alt=""` を当てて装飾扱いにはしない
+- caption 全文を alt へ複製しない。同じ文字列が figcaption としても読まれるため、先頭を要約として使う
+
+## D-45 — URL のスキーム安全性と正規形を分ける
+
+`safeHref` は `javascript:` などを弾く **スキームの安全性**（XSS 対策）。`findUrlPolicyViolation` は自サイト絶対 URL や Notion のページ ID を止める **内部リンクの正規形**（D-13）。両者を 1 つの関数へ混ぜない。
+
+規則そのものは `src/lib/content-links.ts` に置き（D-19）、ページ本文の木を辿るのは `src/lib/article-links.ts` が担う。legacy 本文用の `findSelfReferencingUrls` は HTML 文字列を走査するもので型付きの本文には使えないが、判断の中身は共有する。
+
+## D-46 — `//host` と `\\host` を相対パス扱いしない
+
+`//blog.florigen.ai/...` や `\\evil.example.com/...` はスキームを持たないため素朴に見ると相対パスだが、ブラウザは別オリジンへ解決する（`new URL('//evil.example.com/p', 'https://blog.florigen.ai/posts/x')` → `https://evil.example.com/p`。実測）。
+
+本文では自サイト・外部にかかわらずこの書き方を許さない。ブラウザ依存の解釈に頼る形でスキームを固定できず、ホスト監査もすり抜けやすい。サイト内なら相対パス、外部なら `https://` から書く。
+
+## D-47 — 生成 HTML のサイト内画像は実在を確かめる
+
+`assert-no-remote-images-in-output` の裏返し。ローカル化が成功して `/notion-static/...` へ書き換わったのに実ファイルが出力に無ければ、ビルドは成功したのに画像だけ 404 になる。SSG では誰も気づかないまま公開される。
+
+`astro:build:done` で生成 HTML のサイト内絶対パスを集め、出力に実在しなければビルドを止める。`copy-downloaded-images` の **後**に走らせる（integrations の並び順が実行順になる）。
