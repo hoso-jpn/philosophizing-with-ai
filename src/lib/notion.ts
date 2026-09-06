@@ -103,8 +103,23 @@ async function localizeImages(post: ParsedPost): Promise<ParsedPost> {
   return {
     ...post,
     heroImage: post.heroImage ? await saveImageLocally(post.heroImage, post.slug) : null,
-    content: await localizeContentImages(post.content, post.slug),
+    legacyContent: await localizeContentImages(post.legacyContent, post.slug),
   };
+}
+
+/**
+ * legacy 本文に対する検査へ渡す形。
+ *
+ * content-links.ts / download-image.ts は「slug と本文文字列」を受ける汎用の検査で、
+ * Astro テンプレートにも同じものを当てている（D-19）。記事側の項目名が変わっても
+ * あちらの引数名まで引きずらないよう、ここで詰め替える。
+ *
+ * **対象は legacy 本文だけ。** Notion のページ本文（blocks）には同じ検査がまだ
+ * 掛かっておらず、それは Issue #6 の担当。掛かっていないこと自体は
+ * assertPageBodySourcesAreGuarded が公開経路で止めている。
+ */
+function toLegacyContentEntries(posts: readonly ParsedPost[]): { slug: string; content: string }[] {
+  return posts.map((post) => ({ slug: post.slug, content: post.legacyContent }));
 }
 
 const publishedFilter = { property: 'Published', checkbox: { equals: true } };
@@ -176,7 +191,8 @@ async function fetchPosts(): Promise<Post[]> {
   // 本文が参照している全ホストを出す。禁止リストは漏れるが一覧は漏れない。
   // 実際、特定文字列だけを見ていたために旧プレビューホストへの参照を取りこぼした
   console.log('[content] 参照ホスト一覧:');
-  for (const line of formatReferencedHosts(countReferencedHosts(posts))) console.log(line);
+  for (const line of formatReferencedHosts(countReferencedHosts(toLegacyContentEntries(posts))))
+    console.log(line);
 
   // 検査は件数ログのあと。取得できた件数は先に見せたい。
   // 対象は公開記事だけ（下書きは上の Published フィルタで取得されない）。
@@ -184,12 +200,12 @@ async function fetchPosts(): Promise<Post[]> {
   // ローカル化より前に置く。自サイトを指す URL は「取得に失敗しました（404）」より
   // 「相対パスへ書き換える」の方が直すべきことを直接指すため。
   // リンク（<a href>）はそもそもローカル化の対象外でもある。
-  assertNoSelfReferencingUrls(posts);
+  assertNoSelfReferencingUrls(toLegacyContentEntries(posts));
 
   const localized = await Promise.all(posts.map(localizeImages));
 
   // ローカル化を通したあとの事後条件。外部 URL が残っていたら実装の異常
-  assertNoExternalContentImages(localized);
+  assertNoExternalContentImages(toLegacyContentEntries(localized));
 
   return resolveContentSources(localized);
 }
@@ -227,11 +243,15 @@ function assertMigrationAllowlistMatches(publishedSlugs: string[]): void {
  */
 async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
   const resolved = await Promise.all(
-    posts.map(async (post) => ({
+    posts.map(async ({ legacyContent, ...post }) => ({
       ...post,
       // 失敗を握り潰さない。Notion の障害を「本文が空」と取り違えて legacy へ
-      // 戻すと、移行済み記事が黙って古い本文で公開される（Issue #4）
-      contentSource: await resolveArticleContentSource(post, { fetchPageBlocks: loadPageBody }),
+      // 戻すと、移行済み記事が黙って古い本文で公開される（Issue #4）。
+      // 正規化で未対応ブロックに当たった場合も同じく落ちる（Issue #5）
+      contentSource: await resolveArticleContentSource(
+        { ...post, content: legacyContent },
+        { fetchPageBlocks: loadPageBody },
+      ),
     })),
   );
 

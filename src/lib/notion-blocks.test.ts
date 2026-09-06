@@ -209,6 +209,34 @@ describe('isPageBodySemanticallyEmpty: 空の定義', () => {
     assert.equal(isPageBodySemanticallyEmpty([block]), false);
   });
 
+  it('type が文字列でない断片は本文ありに倒す（読めなかっただけで text とは限らない）', () => {
+    const fragment = (item: unknown): NotionBlock => ({
+      id: 'x',
+      type: 'paragraph',
+      has_children: false,
+      paragraph: { rich_text: [item] },
+    });
+    for (const brokenType of [42, null, {}, [], true]) {
+      assert.equal(
+        isPageBodySemanticallyEmpty([fragment({ type: brokenType, plain_text: '' })]),
+        false,
+        `type=${JSON.stringify(brokenType)} を空と判定した`,
+      );
+    }
+  });
+
+  it('type が無い断片は従来どおり plain_text で判定する', () => {
+    const fragment = (text: string): NotionBlock => ({
+      id: 'x',
+      type: 'paragraph',
+      has_children: false,
+      paragraph: { rich_text: [{ plain_text: text }] },
+    });
+    assert.equal(isPageBodySemanticallyEmpty([fragment('')]), true);
+    assert.equal(isPageBodySemanticallyEmpty([fragment('  ')]), true);
+    assert.equal(isPageBodySemanticallyEmpty([fragment('本文')]), false);
+  });
+
   it('paragraph なのに rich_text が読めなければ本文ありに倒す', () => {
     assert.equal(isBlockSemanticallyEmpty({ id: 'x', type: 'paragraph' }), false);
     assert.equal(

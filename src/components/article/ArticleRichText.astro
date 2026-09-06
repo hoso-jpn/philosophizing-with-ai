@@ -1,0 +1,35 @@
+---
+/**
+ * rich text の並びを描く。
+ *
+ * **文字列を組み立てて set:html しない。** Astro の通常描画に載せておけば
+ * 本文中の `<` `&` `"` は自動でエスケープされ、エスケープ漏れが起きえない。
+ * これが legacy Content（marked + set:html）との一番の違い。
+ */
+import { DeferredArticleBlockError } from '../../lib/article-document';
+import type { ArticleRichText } from '../../lib/article-document';
+import { decorationTags } from '../../lib/article-document';
+import ArticleDecoratedText from './ArticleDecoratedText.astro';
+
+interface Props {
+  nodes: readonly ArticleRichText[];
+}
+const { nodes } = Astro.props as Props;
+
+// KaTeX は Issue #7。数式を素のテキストで出すと、崩れた式が「正しい式」として
+// 公開される。描けないものは描かずに落とす。
+//
+// 通常はここへ来る前に assertArticleDocumentRenderable が記事単位で落とす
+// （そちらは slug とブロック ID を診断に出せる）。ここはその検査を通らない
+// 経路が増えたときのための多層防御。
+for (const node of nodes) {
+  if (node.kind === 'equation') throw new DeferredArticleBlockError('equation', { inline: true });
+}
+---
+{nodes.map((node: ArticleRichText) =>
+  node.kind === 'text' && node.href ? (
+    <a href={node.href}><ArticleDecoratedText tags={decorationTags(node)} text={node.text} /></a>
+  ) : node.kind === 'text' ? (
+    <ArticleDecoratedText tags={decorationTags(node)} text={node.text} />
+  ) : null,
+)}

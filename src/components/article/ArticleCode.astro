@@ -1,0 +1,31 @@
+---
+/**
+ * コードブロック。
+ *
+ * シンタックスハイライトは入れない（Issue #7）。言語は class と data 属性に
+ * 残しておくので、あとから highlighter を足すときに情報が揃っている。
+ */
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'code' }>;
+}
+const { block } = Astro.props as Props;
+const languageClass = block.language ? `language-${block.language}` : undefined;
+---
+<figure class="article-code">
+  <pre><code class={languageClass} data-language={block.language}>{block.code}</code></pre>
+  {block.caption.length > 0 && (
+    <figcaption><ArticleRichText nodes={block.caption} /></figcaption>
+  )}
+</figure>
+
+<style>
+  .article-code { margin: 1.5em 0; }
+  .article-code figcaption {
+    margin-top: 0.5em;
+    font-size: 0.85em;
+    color: var(--text-muted);
+  }
+</style>

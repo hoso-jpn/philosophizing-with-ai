@@ -65,8 +65,8 @@ describe('parsePost: 正常系', () => {
   it('rich_text が 25 断片以上でも本文として受け付ける', () => {
     const many = { rich_text: Array.from({ length: 30 }, (_, i) => ({ plain_text: `断片${i}` })) };
     const post = parsePost(page({ Content: many }));
-    assert.match(post.content, /断片0/);
-    assert.match(post.content, /断片29/);
+    assert.match(post.legacyContent, /断片0/);
+    assert.match(post.legacyContent, /断片29/);
   });
 });
 
@@ -144,16 +144,16 @@ describe('parsePost: Content の必須性は本文 source によって変わる'
   it('page-body 記事は Content が無くても parse できる', () => {
     const post = parsePost(page({ Content: undefined }), [], migrated);
     assert.equal(post.slug, 'rtx-5090');
-    assert.equal(post.content, '');
+    assert.equal(post.legacyContent, '');
     assert.equal(post.title, 'AIと実装01；RTX 5090 で動かす');
   });
 
   it('page-body 記事は Content が空でも parse できる', () => {
-    assert.equal(parsePost(page({ Content: rt('') }), [], migrated).content, '');
+    assert.equal(parsePost(page({ Content: rt('') }), [], migrated).legacyContent, '');
   });
 
   it('page-body 記事でも Content が残っていればそのまま読む（fallback 用）', () => {
-    assert.equal(parsePost(page(), [], migrated).content, '<!-- wp:paragraph --><p>本文</p>');
+    assert.equal(parsePost(page(), [], migrated).legacyContent, '<!-- wp:paragraph --><p>本文</p>');
   });
 
   it('allowlist に無い slug は移行対象外として扱う', () => {

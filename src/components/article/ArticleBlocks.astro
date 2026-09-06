@@ -1,0 +1,52 @@
+---
+/**
+ * ブロックの並びを描く振り分け。
+ *
+ * ここが唯一の分岐点。各コンポーネントは自分の種別だけを知っていればよい。
+ *
+ * **描けない種別は落とす。** null を返して読み飛ばすと、図や数式や表が丸ごと
+ * 抜けた記事が「正常にビルドできた記事」として公開される。記事単位の診断は
+ * lib/article-document.ts の assertArticleDocumentRenderable が先に出すが、
+ * ここでも弾いて、そちらを通さない経路が増えても穴が開かないようにする。
+ */
+import { DeferredArticleBlockError } from '../../lib/article-document';
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleParagraph from './ArticleParagraph.astro';
+import ArticleHeading from './ArticleHeading.astro';
+import ArticleList from './ArticleList.astro';
+import ArticleQuote from './ArticleQuote.astro';
+import ArticleCallout from './ArticleCallout.astro';
+import ArticleCode from './ArticleCode.astro';
+
+interface Props {
+  blocks: readonly ArticleBlock[];
+}
+const { blocks } = Astro.props as Props;
+
+for (const block of blocks) {
+  if (block.kind === 'image' || block.kind === 'equation' || block.kind === 'table') {
+    throw new DeferredArticleBlockError(block.kind, { blockId: block.id });
+  }
+}
+---
+{blocks.map((block: ArticleBlock) => {
+  switch (block.kind) {
+    case 'paragraph':
+      return <ArticleParagraph block={block} />;
+    case 'heading':
+      return <ArticleHeading block={block} />;
+    case 'list':
+      return <ArticleList block={block} />;
+    case 'quote':
+      return <ArticleQuote block={block} />;
+    case 'callout':
+      return <ArticleCallout block={block} />;
+    case 'divider':
+      return <hr />;
+    case 'code':
+      return <ArticleCode block={block} />;
+    default:
+      // 上のループで弾いているのでここへは来ない。網羅性の保険
+      throw new DeferredArticleBlockError((block as ArticleBlock).kind);
+  }
+})}

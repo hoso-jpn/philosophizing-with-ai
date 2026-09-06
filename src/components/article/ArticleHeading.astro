@@ -1,0 +1,18 @@
+---
+/**
+ * 見出し。
+ *
+ * 記事タイトルが h1 なので、本文の heading_1 は h2 から始める。見出しレベルを
+ * 飛ばさないことは読み上げ順序にそのまま効くため、level をそのまま h1 にしない。
+ */
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'heading' }>;
+}
+const { block } = Astro.props as Props;
+
+const Tag = (['h2', 'h3', 'h4'] as const)[block.level - 1];
+---
+<Tag><ArticleRichText nodes={block.richText} /></Tag>

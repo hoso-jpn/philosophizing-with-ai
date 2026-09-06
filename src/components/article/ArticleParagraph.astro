@@ -1,0 +1,10 @@
+---
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleRichText from './ArticleRichText.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'paragraph' }>;
+}
+const { block } = Astro.props as Props;
+---
+<p><ArticleRichText nodes={block.richText} /></p>

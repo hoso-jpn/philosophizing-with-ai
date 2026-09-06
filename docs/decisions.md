@@ -199,3 +199,58 @@ Notion のページ本文の取得が失敗した場合、legacy `Content` へ�
 ## D-37 — Notion API version は本文移行と分けて上げる
 
 本文 source の移行（Issue #4）では `Notion-Version: 2022-06-28` を変えない。API version の更新は Issue #14 で単独で扱う。content model の移行と API version の移行を同じ変更に混ぜると、出力が変わった原因を切り分けられなくなる。
+
+## D-38 — 生の Notion ブロックと ArticleDocument を分ける
+
+Notion API の block JSON を Astro コンポーネントへ直接渡さない。`src/lib/notion-normalize.ts` だけが Notion の形を知り、そこから先へは `src/lib/article-document.ts` の型付きモデル（`ArticleDocument` / `ArticleBlock` / `ArticleRichText`）だけを渡す。
+
+生ブロックを持ち回すと、(a) コンポーネントが `'paragraph' in block` のような API 形状の判定を持ち始め、(b) Notion の API バージョンを上げた時点（Issue #14）で描画側が壊れ、(c) 未対応のブロックが `undefined` を辿って静かに消える。
+
+`ArticleContentSource` の `notion-page` も生ブロックではなく `ArticleDocument` を持つ。
+
+## D-39 — 未対応ブロックは fail closed
+
+未知・未対応の Notion ブロックと rich text 種別、壊れたペイロードは例外にする。`null` を返して読み飛ばさない。
+
+黙って飛ばすと、図や数式や表が丸ごと抜けた記事が「正常にビルドできた記事」として公開される。診断にはブロック種別・記事 slug・Notion ページ ID・ブロック ID を出す。
+
+子を置く場所が無い種別（paragraph / heading など）に子ブロックが付いていた場合も、子の内容が失われるので落とす。
+
+## D-40 — legacy renderer と page-body renderer を並行して持つ
+
+legacy `Content` は従来どおり `marked` + `set:html` で描く。ページ本文は型付きコンポーネントで描く。両者を 1 つの経路へ統合しない。
+
+legacy は HTML 文字列であってブロックの木ではなく、無理に同じモデルへ載せると既存 15 本超の本文の描画結果が変わる。移行が終わるまで 2 経路を並存させる。
+
+新しい renderer では文字列を組み立てて `set:html` しない。Astro の通常描画に載せることで、本文中の `<` `&` `"` のエスケープ漏れが起きえない状態にする。
+
+## D-41 — 意味情報は保持し、描画だけを後続へ送る
+
+画像・数式・table は Issue #5 で型付きノードまで作り、描画は #6 / #7 へ送る。
+
+- 画像は Notion ホストの署名付き URL と external を型で区別して持つ。**署名付き URL を `<img src>` として出力しない**（Issue #6 でローカル化する）
+- インライン数式・数式ブロックは expression をそのまま持つ。`$x^2$` のような文字列へ潰すと数式だった事実が失われ、#7 で正規表現から推測し直すことになる
+- table はヘッダ情報・行・セルの rich text を保持する
+
+描画できないノードに当たったら、空で描かずに落とす。
+
+## D-42 — ページ本文の safety guard は #6 まで残す
+
+Issue #5 で `src/pages/posts/[slug].astro` の暫定 throw は renderer に置き換わったが、`assertPageBodySourcesAreGuarded` は残す。ページ本文には URL / 画像の不変条件（D-13 / D-19 / D-15）がまだ掛かっていないため。
+
+#6 では検査を実装して結線し、この guard を **置き換えて削除する**。`PAGE_BODY_INVARIANTS_IMPLEMENTED` を `true` にするだけの差分は差し戻す。検査が無いまま guard が黙る状態になるため。
+
+### #6 で必ず確認する URL の形
+
+Issue #5 の `safeHref` が見るのは **スキームの安全性だけ**で、ホストは見ていない。自サイト参照の判定は #6 の担当なので、実装時に次の形を必ず検証する。
+
+- protocol-relative URL … `//blog.florigen.ai/...` / `//evil.example.com/...`
+- backslash 形式 … `\\blog.florigen.ai/...` / `\\evil.example.com/...`
+
+  この 2 つはスキームを持たないため `safeHref` は「相対パス」と分類して素通しする。しかしブラウザは `https://blog.florigen.ai/posts/x` を基準に解決すると外部オリジンへ飛ばす（実測）。ホスト判定を絶対 URL だけに限ると取りこぼす。
+- Notion の page mention … `www.notion.so`
+
+  現行の `SELF_HOSTS` には `app.notion.com` しか入っていない。ページメンションの href は `www.notion.so` になるため、`notion.so` を対象に加えるか判断する。
+- 既存の `app.notion.com` の扱い（D-13）
+- 自サイトを指す絶対 URL 全般
+- `/posts/<Notion の UUID>`

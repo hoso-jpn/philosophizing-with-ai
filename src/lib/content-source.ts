@@ -4,7 +4,9 @@ import {
   type BlockChildrenFetcher,
   type NotionBlock,
 } from './notion-blocks.ts';
+import { buildArticleDocument } from './notion-normalize.ts';
 import { usesPageBodySource } from './migration-allowlist.ts';
+import type { ArticleDocument } from './article-document.ts';
 
 /**
  * 記事本文の source を明示する層。
@@ -13,14 +15,18 @@ import { usesPageBodySource } from './migration-allowlist.ts';
  * 呼んでいた。文字列だけでは「legacy の Content プロパティ」と「Notion のページ本文
  * （block の配列）」を区別できないので、どちらであるかを型で持たせる。
  *
- * 描画はここでは行わない。Issue #5 の renderer が kind で分岐して
- * blocks を typed AST へ変換する。
+ * 描画はここでは行わない。分岐して描くのは記事ページ側。
+ *
+ * **notion-page は生ブロックではなく ArticleDocument を持つ。** Notion の API 形状を
+ * 知ってよいのは lib/notion-normalize.ts までで、そこから先（記事ページ・
+ * コンポーネント）へは正規化済みの木だけを渡す。生ブロックを持ち回すと、描画側が
+ * API 形状の判定を持ち始め、Notion の API バージョンを上げた時点で壊れる（D-38）。
  */
 export type ArticleContentSource =
   /** Blog Database の Content rich_text プロパティ。既存記事はすべてこちら */
   | { kind: 'legacy'; content: string }
   /** Notion のページ本文。移行済み記事だけがこちら */
-  | { kind: 'notion-page'; pageId: string; blocks: NotionBlock[] };
+  | { kind: 'notion-page'; pageId: string; document: ArticleDocument };
 
 /** source 解決に必要な、記事 1 件分の入力 */
 export type ContentSourceInput = {
@@ -32,7 +38,13 @@ export type ContentSourceInput = {
 };
 
 export type ContentSourceDeps = {
-  /** ページ本文を取得する。失敗したら投げること（空配列を返してはならない） */
+  /**
+   * ブロックの子を取得する。失敗したら投げること（空配列を返してはならない）。
+   *
+   * ページ本文の取得と入れ子ブロックの取得はどちらも `blocks/<id>/children` なので、
+   * 正規化中の子の取得にもこの同じ関数を渡す。呼び出し側がメモ化していれば、
+   * 同じブロックを 2 度取りに行かない。
+   */
   fetchPageBlocks: (pageId: string) => Promise<NotionBlock[]>;
   /** 移行済みかの判定。既定は版管理された allowlist */
   usesPageBody?: (slug: string) => boolean;
@@ -89,7 +101,14 @@ export async function resolveArticleContentSource(
   const blocks = await deps.fetchPageBlocks(article.id);
 
   if (!isPageBodySemanticallyEmpty(blocks)) {
-    return { kind: 'notion-page', pageId: article.id, blocks };
+    // 正規化も失敗を握り潰さない。未対応のブロックがあれば例外になり、
+    // 本文の一部が欠けたまま公開されることはない（Issue #5）
+    const document = await buildArticleDocument(blocks, {
+      slug: article.slug,
+      pageId: article.id,
+      fetchChildren: deps.fetchPageBlocks,
+    });
+    return { kind: 'notion-page', pageId: article.id, document };
   }
 
   if (legacy.trim()) return { kind: 'legacy', content: legacy };
@@ -99,7 +118,18 @@ export async function resolveArticleContentSource(
 /**
  * Notion のページ本文に対して URL / 画像の不変条件が実装済みか。
  *
- * **Issue #6 が完了したら true にする。それがこのフラグの唯一の用途。**
+ * **Issue #6 での外し方（フラグを true にするだけにしないこと）**
+ *
+ * このフラグを `true` に書き換えるだけなら 1 行の差分で済んでしまい、実際に検査が
+ * 動いているのかレビューで確かめられない。#6 では次の順に置き換える。
+ *
+ *   1. ページ本文（ArticleDocument）に対する URL / 画像の検査を実装し、
+ *      取得パイプラインへ結線する
+ *   2. その検査の呼び出しで assertPageBodySourcesAreGuarded を **置き換える**
+ *   3. このフラグと UnguardedPageBodySourceError を **削除する**
+ *
+ * つまり #6 の差分には必ず検査の実装が含まれる。フラグだけが true になった差分は
+ * 差し戻すこと。
  *
  * legacy Content には次の検査が掛かっている（すべて `post.content` が対象）。
  *
@@ -131,8 +161,10 @@ export class UnguardedPageBodySourceError extends Error {
         'このまま公開すると、内部リンクがドメイン変更で壊れ、期限付きの S3 画像が\n' +
         '1 時間後に全滅します。次のどちらかを行ってください。\n' +
         '  1. src/lib/migration-allowlist.ts から slug を外す（legacy Content へ戻ります）\n' +
-        '  2. Issue #6 を実装し、src/lib/content-source.ts の\n' +
-        '     PAGE_BODY_INVARIANTS_IMPLEMENTED を true にする',
+        '  2. Issue #6 でページ本文への URL / 画像の検査を実装して結線し、\n' +
+        '     この暫定 guard をその検査で置き換える\n\n' +
+        'PAGE_BODY_INVARIANTS_IMPLEMENTED を true にするだけでは駄目です。\n' +
+        '検査が無いまま guard だけが黙る状態になります。',
     );
     this.name = 'UnguardedPageBodySourceError';
   }
@@ -141,9 +173,9 @@ export class UnguardedPageBodySourceError extends Error {
 /**
  * 不変条件が未実装のページ本文が公開経路へ進んでいないことを確かめる。
  *
- * 取得パイプラインの中で呼ぶ。記事ページのテンプレートではなくここに置くのは、
- * テンプレート側の throw が Issue #5 で renderer に置き換わって消えるため。
- * ここなら renderer が入っても、#6 が済むまでビルドが止まり続ける。
+ * 取得パイプラインの中で呼ぶ。記事ページのテンプレートではなくここに置いた理由は
+ * Issue #5 で実証された。あちらの暫定 throw は予定どおり renderer へ置き換わって
+ * 消えたが、**この guard は残っているのでページ本文はまだ公開経路へ進めない**。
  *
  * allowlist が空のあいだ `notion-page` は 1 件も生まれないので、この検査は
  * 現状の全記事に対して素通りする。
