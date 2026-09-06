@@ -24,10 +24,16 @@
  * 常にバグで、(a) プレビューデプロイで踏むと本番へ飛んでしまいプレビューの意味が
  * なくなる、(b) ドメインを変えたときに全部壊れる（実際に起きた）。
  */
-const SELF_HOSTS = ['blog.florigen.ai', 'philosophizing-with-ai.com', 'app.notion.com'];
+const SELF_HOSTS = ['blog.florigen.ai', 'philosophizing-with-ai.com', 'app.notion.com', 'notion.so'];
 
-/** プレビューデプロイのホストは毎回変わるので、サフィックスで見る */
-const SELF_HOST_SUFFIXES = ['.vercel.app'];
+/**
+ * プレビューデプロイのホストは毎回変わるので、サフィックスで見る。
+ *
+ * `notion.so` も同様。Notion のページメンションは `https://www.notion.so/...` と
+ * いう href になり、`app.notion.com` と同じく **読者が開けないリンク**である。
+ * サブドメインが増えても取りこぼさないようサフィックスで判定する（D-43）。
+ */
+const SELF_HOST_SUFFIXES = ['.vercel.app', '.notion.so'];
 
 /** 停止済みで復元もできないホスト。エラー文で補足するために持つ */
 const DEAD_HOSTS = ['philosophizing-with-ai.com'];
@@ -249,4 +255,95 @@ export function safeHref(href: string | null | undefined): string | null {
   if (!hasScheme) return trimmed;
 
   return SAFE_URL_SCHEMES.has(parsed.protocol) ? trimmed : null;
+}
+
+/* ------------------------------------------- URL 単位の規則（ページ本文用） */
+
+/**
+ * サイトの正規オリジン。`//host` や `\\host` をブラウザと同じ意味で解決するために使う。
+ */
+const SITE_ORIGIN = 'https://blog.florigen.ai';
+
+/**
+ * 「ホストを指定している書き方」か。
+ *
+ * スキーム付きの絶対 URL に加えて、**protocol-relative（`//host/...`）と
+ * バックスラッシュ形（`\\host/...`）も含む**。後ろ 2 つはスキームを持たないので
+ * 素朴に見ると相対パスに見えるが、ブラウザは別オリジンへ解決する（実測）。
+ * 相対パスとして扱うと、自サイト参照の監査を丸ごとすり抜ける。
+ */
+function designatesHost(raw: string): boolean {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return true;
+  // `//host` `\\host` `/\host` `\/host` はいずれも authority の書き出しになる
+  return /^[\\/]{2}/.test(raw);
+}
+
+/** スキームを持たず、`//` でも始まらない書き方（`/posts/x`、`#a`、`?q=1`、`a/b`） */
+function isPlainRelative(raw: string): boolean {
+  return !designatesHost(raw);
+}
+
+export type UrlPolicyViolation = {
+  url: string;
+  /** 機械判定の理由。テストと診断の両方で使う */
+  reason: 'self-host' | 'notion-id-path' | 'authority-shorthand';
+  /** 読み手に何を直せばよいかを伝える 1 行 */
+  advice: string;
+};
+
+/**
+ * URL 1 本を本文へ書いてよいか判定する。
+ *
+ * **HTML ではなく URL 文字列を見る規則。** 既存の findSelfReferencingUrls は
+ * legacy 本文（HTML 文字列）を正規表現で走査するもので、型付きのページ本文には
+ * 使えない。規則そのものはここに 1 本化し、両方から呼べるようにする（D-19）。
+ *
+ * `safeHref` とは責務が違う。あちらは `javascript:` などを弾く **スキームの安全性**
+ * （XSS 対策）で、こちらは **内部リンクの正規形**（D-13）。片方に混ぜない。
+ *
+ * @returns 問題があればその内容、無ければ null
+ */
+export function findUrlPolicyViolation(raw: string): UrlPolicyViolation | null {
+  const url = raw.trim();
+  if (url === '') return null;
+
+  if (isPlainRelative(url)) {
+    // 相対パスは正しい書き方。ただし Notion のページ ID を指していないかは見る
+    return NOTION_ID_PATH.test(url)
+      ? {
+          url,
+          reason: 'notion-id-path',
+          advice: 'Notion のページ ID ではなく slug で書いてください（/posts/<slug>）',
+        }
+      : null;
+  }
+
+  // `//host/...` と `\\host/...` は、自サイト・外部にかかわらず本文では使わない。
+  // ブラウザ依存の解釈に頼る書き方で、スキームを固定できず、監査もすり抜けやすい
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+    return {
+      url,
+      reason: 'authority-shorthand',
+      advice:
+        'スキームを省いた `//host/...` や `\\host/...` は使わないでください。' +
+        'サイト内なら相対パス（/posts/<slug>）、外部なら https:// から書いてください',
+    };
+  }
+
+  let host: string;
+  try {
+    host = new URL(url, SITE_ORIGIN).hostname.toLowerCase();
+  } catch {
+    return null; // mailto: など、ホストを持たない絶対 URL は対象外
+  }
+
+  if (!isSelfHost(host)) return null;
+
+  return {
+    url,
+    reason: 'self-host',
+    advice: host.endsWith('notion.so') || host === NOTION_APP_HOST
+      ? 'Notion 内部のリンクです。読者は開けません。Notion 側で /posts/<slug> の相対リンクに直してください'
+      : '自サイトへの絶対 URL です。相対パス（/posts/<slug>）に書き換えてください',
+  };
 }

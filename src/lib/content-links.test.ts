@@ -267,8 +267,16 @@ describe('app.notion.com — Notion が書き換えた内部リンク', () => {
     }
   });
 
-  it('Notion の他ホストは対象外', () => {
-    assert.equal(isSelfHost('www.notion.so'), false);
+  it('notion.so も自サイト扱い（ページメンションの href。Issue #6 で追加）', () => {
+    // Notion のページメンションは https://www.notion.so/... という href になる。
+    // app.notion.com と同じく読者は開けないので、同じ規則で止める（D-43）
+    assert.equal(isSelfHost('www.notion.so'), true);
+    assert.equal(isSelfHost('notion.so'), true);
+  });
+
+  it('似ているだけの別ホストは対象外', () => {
     assert.equal(isSelfHost('notion.com'), false);
+    assert.equal(isSelfHost('mynotion.so'), false);
+    assert.equal(isSelfHost('notion.so.evil.example.com'), false);
   });
 });
