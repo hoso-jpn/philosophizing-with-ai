@@ -239,3 +239,18 @@ legacy は HTML 文字列であってブロックの木ではなく、無理に�
 Issue #5 で `src/pages/posts/[slug].astro` の暫定 throw は renderer に置き換わったが、`assertPageBodySourcesAreGuarded` は残す。ページ本文には URL / 画像の不変条件（D-13 / D-19 / D-15）がまだ掛かっていないため。
 
 #6 では検査を実装して結線し、この guard を **置き換えて削除する**。`PAGE_BODY_INVARIANTS_IMPLEMENTED` を `true` にするだけの差分は差し戻す。検査が無いまま guard が黙る状態になるため。
+
+### #6 で必ず確認する URL の形
+
+Issue #5 の `safeHref` が見るのは **スキームの安全性だけ**で、ホストは見ていない。自サイト参照の判定は #6 の担当なので、実装時に次の形を必ず検証する。
+
+- protocol-relative URL … `//blog.florigen.ai/...` / `//evil.example.com/...`
+- backslash 形式 … `\\blog.florigen.ai/...` / `\\evil.example.com/...`
+
+  この 2 つはスキームを持たないため `safeHref` は「相対パス」と分類して素通しする。しかしブラウザは `https://blog.florigen.ai/posts/x` を基準に解決すると外部オリジンへ飛ばす（実測）。ホスト判定を絶対 URL だけに限ると取りこぼす。
+- Notion の page mention … `www.notion.so`
+
+  現行の `SELF_HOSTS` には `app.notion.com` しか入っていない。ページメンションの href は `www.notion.so` になるため、`notion.so` を対象に加えるか判断する。
+- 既存の `app.notion.com` の扱い（D-13）
+- 自サイトを指す絶対 URL 全般
+- `/posts/<Notion の UUID>`
