@@ -30,7 +30,13 @@ export function copyDownloadedImages() {
           return;
         }
         const destination = path.join(fileURLToPath(dir), 'notion-static');
-        await cp(SOURCE, destination, { recursive: true });
+        // 画像だけを出力へ入れる。`<digest>.json` は「この成果物は検証を通した」ことを
+        // 記録するビルド用のファイルで、公開する意味が無い（取得元のパスが読者から
+        // 見えるだけになる）。`.tmp` は publish 途中で落ちた場合の残骸
+        await cp(SOURCE, destination, {
+          recursive: true,
+          filter: (source) => !/\.(json|tmp)$/.test(source),
+        });
         logger.info(`notion-static: ${destination} へコピーしました`);
       },
     },

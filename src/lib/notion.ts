@@ -103,7 +103,11 @@ function reportWarnings(warnings: ParseWarning[]): void {
 async function localizeImages(post: ParsedPost): Promise<ParsedPost> {
   return {
     ...post,
-    heroImage: post.heroImage ? await saveImageLocally(post.heroImage, post.slug) : null,
+    // HeroImage は Notion がホストする署名付き URL。署名は取得のたびに変わるので
+    // クエリを同一性に含めない（含めると毎ビルド別名になり、キャッシュが際限なく増える）
+    heroImage: post.heroImage
+      ? await saveImageLocally(post.heroImage, post.slug, { identity: 'origin-path' })
+      : null,
     legacyContent: await localizeContentImages(post.legacyContent, post.slug),
   };
 }

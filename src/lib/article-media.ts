@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { saveImageLocally } from './download-image.ts';
+import { saveImageLocally, type CacheIdentity } from './download-image.ts';
 import { collectArticleImages, mapArticleImages, plainTextOfRichText } from './article-document.ts';
 import type { ArticleDocument, ArticleImageBlock } from './article-document.ts';
 
@@ -14,8 +14,12 @@ import type { ArticleDocument, ArticleImageBlock } from './article-document.ts';
  * 消えれば同じことが起きるうえ、legacy 本文の画像方針（D-15）とも揃う。
  *
  * ダウンロードそのものは既存の download-image.ts をそのまま使う。あちらには
- * MIME 判定・SVG 対応・クエリを除いた安定ファイル名・再取得の抑止が既にあり、
- * ここで別系統を作ると挙動が 2 つに分かれる。
+ * MIME 判定・SVG 対応・検証済み成果物の再利用が既にあり、ここで別系統を作ると
+ * 挙動が 2 つに分かれる。
+ *
+ * **同一性（どの URL を同じ画像とみなすか）だけはここで決める。** notion-hosted は
+ * 署名クエリが毎回変わるので origin + pathname、external はクエリが中身を決めうるので
+ * URL 全体。download-image.ts に既定を 1 つ置いて済ませると、必ずどちらかが壊れる。
  */
 
 /** 保存先。download-image.ts と同じ場所を指す */
@@ -108,7 +112,18 @@ async function localizeImageBlock(
 ): Promise<ArticleImageBlock> {
   if (image.source.kind === 'local') return image;
 
-  const localize = deps.localize ?? saveImageLocally;
+  // 同一性は取得元の種類で決まる。**ここを 1 つの既定で済ませない。**
+  //
+  // notion-hosted は署名付き URL で、`X-Amz-Signature` が取得のたびに変わる。
+  // クエリを同一性に含めると毎ビルド別ファイルになり、キャッシュが際限なく増える。
+  //
+  // external はその逆で、クエリが中身を決めることがある（chart / badge / image
+  // proxy は `?id=1` と `?id=2` で別の画像を返す）。クエリを落とすと 2 枚目に
+  // 1 枚目の中身が出る。ビルドは成功し、警告も出ない。
+  const identity: CacheIdentity = image.source.kind === 'notion-hosted' ? 'origin-path' : 'full-url';
+
+  const localize =
+    deps.localize ?? ((url: string, context: string) => saveImageLocally(url, context, { identity }));
   const readTitle = deps.readTitle ?? readSvgTitle;
   const { url } = image.source;
 
@@ -155,8 +170,8 @@ function safeUrlForLog(url: string): string {
 /**
  * 本文中の画像をすべてローカル化した本文を返す。
  *
- * 同じ URL が複数回出てきても、download-image.ts が保存済みファイルの有無を
- * 見て再取得を避ける。ここで別のキャッシュを重ねない。
+ * 同じ URL が複数回出てきても、download-image.ts が検証済み成果物の有無を見て
+ * 再取得を避ける。ここで別のキャッシュを重ねない。
  */
 export async function localizeArticleDocumentMedia(
   document: ArticleDocument,
