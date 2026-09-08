@@ -2,9 +2,9 @@
 import { getPosts } from '../../lib/notion';
 import type { Post } from '../../lib/types';
 import { getSlugFromTag } from '../../lib/tag-slugs';
-import { marked } from 'marked';
 import { assertArticleDocumentRenderable } from '../../lib/article-document';
 import ArticleContent from '../../components/article/ArticleContent.astro';
+import LegacyArticleContent from '../../components/article/LegacyArticleContent.astro';
 import BaseHead from '../../components/BaseHead.astro';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
@@ -39,8 +39,6 @@ if (source.kind === 'notion-page') {
   assertArticleDocumentRenderable(source.document, { slug: post.slug });
 }
 
-// legacy Content の描画。Phase 4 でフォーマット層に置き換える
-const legacyHtml = source.kind === 'legacy' ? marked(source.content) : null;
 const { title, tags, heroImage } = post;
 ---
 
@@ -126,7 +124,7 @@ const { title, tags, heroImage } = post;
 
         <hr />
         {source.kind === 'legacy' ? (
-          <div class="notion-content" set:html={legacyHtml}></div>
+          <LegacyArticleContent content={source.content} />
         ) : (
           <ArticleContent document={source.document} />
         )}

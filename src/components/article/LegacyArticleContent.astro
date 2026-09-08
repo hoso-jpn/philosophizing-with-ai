@@ -1,0 +1,11 @@
+---
+import { marked } from 'marked';
+
+interface Props {
+  content: string;
+}
+
+const { content } = Astro.props as Props;
+const html = marked(content);
+---
+<div class="notion-content" set:html={html}></div>
