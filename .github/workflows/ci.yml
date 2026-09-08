@@ -21,7 +21,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
+          # `npm test` は node:test に .ts を直接読ませる（type stripping）。
+          # これが flag 無しで動くのは 22.18.0 以降で、22.12.0 では全 test file が
+          # ERR_UNKNOWN_FILE_EXTENSION になり 0 pass / 17 fail になる（実測）。
+          # package.json の engines と揃えること。
+          node-version: 22.18.0
           cache: npm
       - run: npm ci
       - run: npm test

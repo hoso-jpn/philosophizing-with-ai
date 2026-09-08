@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getPosts } from '../lib/notion';
 import { getSlugFromTag } from '../lib/tag-slugs';
-import { absoluteSiteUrl, articlePath } from '../lib/site-urls';
+import { absoluteSiteUrl, articlePath, xmlEscape } from '../lib/site-urls';
 
 // 💡 これにより、ビルド時にNotionからデータを取得し、静的なsitemap.xmlが生成されるようになります
 export const prerender = true;
@@ -41,7 +41,7 @@ export const GET: APIRoute = async () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${allEntries.map((entry) => `  <url>
-    <loc>${entry.url}</loc>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ''}
+    <loc>${xmlEscape(entry.url)}</loc>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ''}
     <changefreq>${entry.changefreq}</changefreq>
     <priority>${entry.priority}</priority>
   </url>`).join('\n')}
