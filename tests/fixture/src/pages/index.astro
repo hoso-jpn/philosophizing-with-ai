@@ -2,6 +2,7 @@
 import ArticleContent from '../../../../src/components/article/ArticleContent.astro';
 import LegacyArticleContent from '../../../../src/components/article/LegacyArticleContent.astro';
 import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
+import ArticleSeriesNavigation from '../../../../src/components/article/ArticleSeriesNavigation.astro';
 import type { ArticleDocument, ArticleRichText } from '../../../../src/lib/article-document';
 
 export const prerender = true;
@@ -67,5 +68,12 @@ const document: ArticleDocument = {
 >
   <ArticleContent document={document} />
   <LegacyArticleContent content={'## Legacy fixture\n\n既存の **太字** と [内部リンク](/about) を維持する。'} />
-  <Fragment slot="after-content"><section id="comments-fixture"><h2>コメント</h2></section></Fragment>
+  <Fragment slot="after-content">
+    <ArticleSeriesNavigation
+      seriesName="AIと統計学"
+      previous={{ slug: 'statistics-02', title: 'AIと統計学02；前の記事' }}
+      next={{ slug: 'statistics-04', title: 'AIと統計学04；次の記事' }}
+    />
+    <section id="comments-fixture"><h2>コメント</h2></section>
+  </Fragment>
 </ArticleShell>

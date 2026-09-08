@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   SERIES_DISPLAY_ORDER,
+  getSeriesNavigation,
   getSeriesName,
+  getSeriesNumber,
   groupPostsBySeries,
   parseSeriesFromTitle,
   parseSeriesLabel,
@@ -34,6 +36,67 @@ describe('parseSeriesLabel', () => {
     assert.equal(parseSeriesLabel('GPT-5を試した2026'), null);
     assert.equal(parseSeriesLabel(''), null);
     assert.equal(parseSeriesLabel(undefined), null);
+  });
+});
+
+describe('getSeriesNumber', () => {
+  it('半角・全角の連番を数値として読む', () => {
+    assert.equal(getSeriesNumber({ titlePrefix: 'AIと統計学03' }), 3);
+    assert.equal(getSeriesNumber({ titlePrefix: 'AIと統計学０３' }), 3);
+  });
+
+  it('明示 series と異なるラベルの番号を混ぜない', () => {
+    assert.equal(getSeriesNumber({ series: 'AIと統計学', titlePrefix: 'AIと哲学03' }), null);
+  });
+});
+
+describe('getSeriesNavigation', () => {
+  const posts = [
+    { slug: '03', title: 'AIと統計学03；C', titlePrefix: 'AIと統計学03', date: '2026-01-01' },
+    { slug: '01', title: 'AIと統計学01；A', titlePrefix: 'AIと統計学01', date: '2026-03-01' },
+    { slug: '02', title: 'AIと統計学02；B', titlePrefix: 'AIと統計学02', date: '2026-02-01' },
+  ];
+
+  it('01 は next 02 だけを返す', () => {
+    const navigation = getSeriesNavigation(posts[1], posts);
+    assert.equal(navigation?.previous, null);
+    assert.equal(navigation?.next?.slug, '02');
+  });
+
+  it('02 は prev 01 / next 03 を返す', () => {
+    const navigation = getSeriesNavigation(posts[2], posts);
+    assert.equal(navigation?.previous?.slug, '01');
+    assert.equal(navigation?.next?.slug, '03');
+  });
+
+  it('03 は prev 02 だけを返す', () => {
+    const navigation = getSeriesNavigation(posts[0], posts);
+    assert.equal(navigation?.previous?.slug, '02');
+    assert.equal(navigation?.next, null);
+  });
+
+  it('Date が逆順でも連番を優先し、全角数字も扱う', () => {
+    const fullWidth = posts.map((post) => ({ ...post, titlePrefix: post.titlePrefix.replace(/03$/, '０３') }));
+    assert.equal(getSeriesNavigation(fullWidth[0], fullWidth)?.previous?.slug, '02');
+  });
+
+  it('番号無しは番号付きの後で Date → title → slug の順に安定化する', () => {
+    const unnumbered = [
+      ...posts,
+      { slug: 'appendix-b', title: '補遺B', titlePrefix: '', series: 'AIと統計学', date: '2026-04-01' },
+      { slug: 'appendix-a', title: '補遺A', titlePrefix: '', series: 'AIと統計学', date: '2026-04-01' },
+    ];
+    const navigation = getSeriesNavigation(unnumbered[0], unnumbered);
+    assert.equal(navigation?.next?.slug, 'appendix-a');
+  });
+
+  it('未知シリーズにも適用し、非シリーズ記事には表示しない', () => {
+    const unknown = [
+      { slug: 'music-1', title: 'AIと音楽01；A', titlePrefix: 'AIと音楽01' },
+      { slug: 'music-2', title: 'AIと音楽02；B', titlePrefix: 'AIと音楽02' },
+    ];
+    assert.equal(getSeriesNavigation(unknown[0], unknown)?.next?.slug, 'music-2');
+    assert.equal(getSeriesNavigation({ slug: 'note', title: '単発記事', titlePrefix: '' }, unknown), null);
   });
 });
 
