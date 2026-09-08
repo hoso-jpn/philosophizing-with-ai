@@ -3,22 +3,32 @@ import { getPosts } from '../../lib/notion';
 import type { Post } from '../../lib/types';
 import { assertArticleDocumentRenderable } from '../../lib/article-document';
 import { articleDescription } from '../../lib/article-metadata';
-import { getSeriesName } from '../../lib/series';
+import { getSeriesName, getSeriesNavigation, type SeriesNavigation } from '../../lib/series';
 import ArticleContent from '../../components/article/ArticleContent.astro';
 import LegacyArticleContent from '../../components/article/LegacyArticleContent.astro';
 import ArticleShell from '../../components/article/ArticleShell.astro';
+import ArticleSeriesNavigation from '../../components/article/ArticleSeriesNavigation.astro';
 
 // 記事ページはビルド時に全件生成する。
 // 記事を props で渡すので、ページごとに Notion を引き直さない（1ビルド 1クエリ）。
 // ここに無い slug は静的ファイルが存在しないので、そのまま 404 になる。
 export async function getStaticPaths() {
   const posts = await getPosts();
-  return posts.map((post) => ({ params: { slug: post.slug }, props: { post } }));
+  return posts.map((post) => {
+    const navigation = getSeriesNavigation(post, posts);
+    const compactNavigation = navigation ? {
+      seriesName: navigation.seriesName,
+      previous: navigation.previous ? { slug: navigation.previous.slug, title: navigation.previous.title } : null,
+      next: navigation.next ? { slug: navigation.next.slug, title: navigation.next.title } : null,
+    } : null;
+    return { params: { slug: post.slug }, props: { post, navigation: compactNavigation } };
+  });
 }
 
-type Props = { post: Post };
+type NavigationPost = Pick<Post, 'slug' | 'title'>;
+type Props = { post: Post; navigation: SeriesNavigation<NavigationPost> | null };
 
-const { post } = Astro.props;
+const { post, navigation } = Astro.props;
 
 // 本文の正本は contentSource。文字列だけでは legacy Content と Notion の
 // ページ本文を区別できないので、必ずここで分岐する。
@@ -54,5 +64,14 @@ const seriesName = getSeriesName(post);
     <LegacyArticleContent content={source.content} />
   ) : (
     <ArticleContent document={source.document} />
+  )}
+  {navigation && (navigation.previous || navigation.next) && (
+    <Fragment slot="after-content">
+      <ArticleSeriesNavigation
+        seriesName={navigation.seriesName}
+        previous={navigation.previous}
+        next={navigation.next}
+      />
+    </Fragment>
   )}
 </ArticleShell>

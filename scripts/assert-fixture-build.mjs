@@ -71,6 +71,9 @@ assert.match(html, /<time datetime="2026-09-08T00:00:00.000Z">/, '公開日が s
 assert.match(html, /<nav class="article-tags" aria-label="記事のタグ"/, 'tag navigation が semantic でありません');
 assert.match(html, /<footer class="article-footer"/, '記事後セクションの配置境界がありません');
 assert.match(html, /id="comments-fixture"/, 'コメント欄用 slot が描画されていません');
+assert.match(html, /<nav class="series-navigation" aria-label="AIと統計学シリーズ内の記事"/, 'series navigation が semantic でありません');
+assert.match(html, /href="\/posts\/statistics-02"/, 'prev の slug URL がありません');
+assert.match(html, /href="\/posts\/statistics-04"/, 'next の slug URL がありません');
 assert.doesNotMatch(html, /amazonaws\.com|philosophizing-with-ai\.com/, '禁止ホストが残っています');
 
 // KaTeX の視覚層は支援技術から隠し、MathML だけを読ませる
