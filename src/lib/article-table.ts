@@ -1,6 +1,8 @@
-import type { ArticleBlock, ArticleTableRow } from './article-document.ts';
+import type { ArticleTableBlock, ArticleTableRow } from './article-document.ts';
 
-export type ArticleTableBlock = Extract<ArticleBlock, { kind: 'table' }>;
+// 型は article-document.ts が持つものをそのまま使う。ここで同じ Extract を
+// 書き直すと、モデル側が変わったときに片方だけ古いまま通ってしまう
+export type { ArticleTableBlock };
 export type TableHeaderScope = 'col' | 'row' | null;
 
 /** Notion の has_column_header を thead / tbody の境界へ変換する。 */

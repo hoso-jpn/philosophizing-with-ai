@@ -150,6 +150,44 @@ export class DeferredArticleBlockError extends Error {
   }
 }
 
+export type ArticleTableBlock = Extract<ArticleBlock, { kind: 'table' }>;
+
+/**
+ * 行が 1 つも無い table に当たったことを表す。
+ *
+ * **空の table を空のまま描かない。** rows が空のとき ArticleTable は
+ * `<table><tbody></tbody></table>` を出し、しかもそれを `role="region"` と
+ * `tabindex="0"` を持つ枠で包む。読者には中身の無い枠が見え、支援技術には
+ * 名前だけあって中身の無い領域とタブ位置が 1 つ増える（生成 HTML で実測）。
+ *
+ * Notion の table は必ず table_row を子に持つので、ここへ来るのは
+ * `has_children` が false で返った場合など、応答か実装が壊れているとき。
+ * 本文の一部が黙って抜けた記事を公開しないため、他の描けないブロックと
+ * 同じくビルドを止める。
+ */
+export class EmptyArticleTableError extends Error {
+  constructor(context: { slug?: string; blockId: string }) {
+    super(
+      'table ブロックに行がありません。\n' +
+        `  ${context.slug ? `記事「${context.slug}」 / ` : ''}ブロック ${context.blockId}\n` +
+        '  Notion の table は table_row を子に持つはずで、空で返るのは想定外です。\n' +
+        '  Notion 側で表を作り直すか、使っていない表を削除してください。\n' +
+        '中身の無い表枠を公開しないため、ビルドを止めます。',
+    );
+    this.name = 'EmptyArticleTableError';
+  }
+}
+
+/** 描画してよい table か確かめる。空表はここで落とす */
+export function assertArticleTableRenderable(
+  block: ArticleTableBlock,
+  context: { slug?: string } = {},
+): void {
+  if (block.rows.length === 0) {
+    throw new EmptyArticleTableError({ slug: context.slug, blockId: block.id });
+  }
+}
+
 /**
  * この記事を今の renderer で最後まで描けるかを、描画に入る前に確かめる。
  *
@@ -195,10 +233,13 @@ function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }):
       for (const child of block.children) assertBlockRenderable(child, context);
       return;
 
+    case 'table':
+      assertArticleTableRenderable(block, context);
+      return;
+
     case 'code':
     case 'image':
     case 'equation':
-    case 'table':
     case 'divider':
       return;
 

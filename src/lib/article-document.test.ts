@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  EmptyArticleTableError,
   assertArticleDocumentRenderable,
   decorationTags,
 } from './article-document.ts';
@@ -74,7 +75,7 @@ describe('assertArticleDocumentRenderable: #7 の block を含めて描画対象
 
   for (const [label, blockValue] of [
     ['equation', { kind: 'equation', id: 'eq', expression: 'x^2' }],
-    ['table', { kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [] }],
+    ['table', { kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [{ id: 'r', cells: [[]] }] }],
   ] as [string, ArticleBlock][]) {
     it(`${label} は #7 で描画対象になった`, () => {
       assert.doesNotThrow(() =>
@@ -105,7 +106,7 @@ describe('assertArticleDocumentRenderable: #7 の block を含めて描画対象
 
   it('quote / callout の子にある表と数式も通す', () => {
     for (const parent of [
-      { kind: 'quote', id: 'q', richText: [], children: [{ kind: 'table', id: 't', hasColumnHeader: false, hasRowHeader: false, rows: [] }] },
+      { kind: 'quote', id: 'q', richText: [], children: [{ kind: 'table', id: 't', hasColumnHeader: false, hasRowHeader: false, rows: [{ id: 'r', cells: [[]] }] }] },
       { kind: 'callout', id: 'k', richText: [], icon: null, children: [{ kind: 'equation', id: 'e', expression: 'x' }] },
     ] as ArticleBlock[]) {
       assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: [parent] }));
@@ -133,6 +134,40 @@ describe('assertArticleDocumentRenderable: #7 の block を含めて描画対象
     };
     assert.doesNotThrow(() =>
       assertArticleDocumentRenderable({ blocks: [withEquation] }, { slug: 's' }),
+    );
+  });
+
+  // 行を 1 つも持たない table を通すと、ArticleTable が
+  // `<table><tbody></tbody></table>` を `role="region"` + `tabindex="0"` の枠で
+  // 包んだものを出す。中身の無い枠と空の ARIA 領域だけが公開されるので落とす
+  it('行の無い table は「中身の無い表枠」を公開せず落とす', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable(
+          { blocks: [{ kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [] }] },
+          { slug: 'ai-stats-03' },
+        ),
+      (error: Error) =>
+        error instanceof EmptyArticleTableError &&
+        error.message.includes('ai-stats-03') &&
+        error.message.includes('tb'),
+    );
+  });
+
+  it('入れ子（quote の子）の空 table も落とす', () => {
+    assert.throws(
+      () =>
+        assertArticleDocumentRenderable({
+          blocks: [
+            {
+              kind: 'quote',
+              id: 'q',
+              richText: [],
+              children: [{ kind: 'table', id: 'inner', hasColumnHeader: false, hasRowHeader: false, rows: [] }],
+            },
+          ],
+        }),
+      EmptyArticleTableError,
     );
   });
 

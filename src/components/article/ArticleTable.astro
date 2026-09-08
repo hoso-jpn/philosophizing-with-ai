@@ -1,5 +1,6 @@
 ---
 import type { ArticleBlock } from '../../lib/article-document';
+import { assertArticleTableRenderable } from '../../lib/article-document';
 import { splitArticleTableRows } from '../../lib/article-table';
 import ArticleTableRow from './ArticleTableRow.astro';
 
@@ -8,6 +9,11 @@ interface Props {
 }
 
 const { block } = Astro.props as Props;
+
+// 記事単位の診断は assertArticleDocumentRenderable が先に出すが、ここでも弾く。
+// 空の rows をそのまま描くと、中身の無い枠と空の ARIA 領域だけが公開される
+assertArticleTableRenderable(block);
+
 const { headerRow, bodyRows } = splitArticleTableRows(block);
 ---
 <div class="article-table-scroll" role="region" aria-label="記事内の表" tabindex="0">

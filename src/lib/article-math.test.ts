@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ArticleMathRenderError, renderArticleMath } from './article-math.ts';
+import { ArticleMathRenderError, ArticleMathTrustError, renderArticleMath } from './article-math.ts';
 
 describe('renderArticleMath: KaTeX SSR', () => {
   it('inline equation を HTML + MathML にする', () => {
@@ -52,5 +52,41 @@ describe('renderArticleMath: KaTeX SSR', () => {
       () => renderArticleMath('  ', { displayMode: false }),
       ArticleMathRenderError,
     );
+  });
+
+  // KaTeX の trust 機能を要求するコマンドは、**例外にならず赤字で描かれる**。
+  // throwOnError は ParseError にしか効かないので、ここを塞がないと
+  // 記事に赤い `\href` の文字だけが公開される（実測）
+  for (const command of ['\\href{https://example.invalid}{x}', '\\url{https://example.invalid}', '\\includegraphics{x.png}']) {
+    it(`trust を要求する ${command.slice(0, 16)} を赤字 fallback にせず落とす`, () => {
+      assert.throws(
+        () => renderArticleMath(command, { displayMode: false, slug: 's', blockId: 'b' }),
+        (error: Error) =>
+          error instanceof ArticleMathRenderError &&
+          error.cause instanceof ArticleMathTrustError &&
+          error.message.includes('trust'),
+      );
+    });
+  }
+
+  it('trust 拒否の出力を公開しない（リンク要素も赤字 fallback も残さない）', () => {
+    // 万一 renderArticleMath が通ってしまった場合に何が出るのかを固定しておく。
+    // 現在は throw するので、この test は throw することだけを確かめる
+    assert.throws(
+      () => renderArticleMath(String.raw`\href{javascript:alert(1)}{x}`, { displayMode: false }),
+      ArticleMathRenderError,
+    );
+  });
+
+  it('数式モードの素の日本語には \\text{} を使うよう案内する', () => {
+    assert.throws(
+      () => renderArticleMath('面積', { displayMode: false, slug: 's' }),
+      (error: Error) => error instanceof ArticleMathRenderError && error.message.includes('\\text{'),
+    );
+  });
+
+  it('\\text{} で囲んだ日本語は通す', () => {
+    const html = renderArticleMath(String.raw`x_{\text{合計}}`, { displayMode: false });
+    assert.match(html, /class="katex"/);
   });
 });
