@@ -1,0 +1,11 @@
+---
+import type { ArticleBlock } from '../../lib/article-document';
+import ArticleMath from './ArticleMath.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'equation' }>;
+}
+
+const { block } = Astro.props as Props;
+---
+<ArticleMath expression={block.expression} displayMode={true} blockId={block.id} />

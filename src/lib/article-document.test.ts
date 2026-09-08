@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  DeferredArticleBlockError,
   assertArticleDocumentRenderable,
   decorationTags,
 } from './article-document.ts';
@@ -54,7 +53,7 @@ describe('decorationTags: 装飾の入れ子順を 1 か所に固定する', () 
   });
 });
 
-describe('assertArticleDocumentRenderable: 描けないものを黙って飛ばさない', () => {
+describe('assertArticleDocumentRenderable: #7 の block を含めて描画対象にする', () => {
   const renderable: ArticleBlock[] = [
     paragraph(),
     { kind: 'heading', id: 'h', level: 2, richText: [] },
@@ -65,7 +64,7 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
     { kind: 'callout', id: 'k', richText: [], icon: null, children: [] },
   ];
 
-  it('今回対応した種別だけなら通る', () => {
+  it('従来から対応している種別を通す', () => {
     assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: renderable }));
   });
 
@@ -73,58 +72,47 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
     assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: [] }));
   });
 
-  const deferred: [string, ArticleBlock, string][] = [
-    ['equation', { kind: 'equation', id: 'eq', expression: 'x^2' }, 'Issue #7'],
-    ['table', { kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [] }, 'Issue #7'],
-  ];
-
-  for (const [label, blockValue, issue] of deferred) {
-    it(`${label} は ${issue} を案内して落ちる`, () => {
-      assert.throws(
-        () => assertArticleDocumentRenderable({ blocks: [blockValue] }, { slug: 'ai-stats-03' }),
-        (e: Error) =>
-          e instanceof DeferredArticleBlockError &&
-          e.message.includes(label) &&
-          e.message.includes(issue) &&
-          e.message.includes('ai-stats-03'),
+  for (const [label, blockValue] of [
+    ['equation', { kind: 'equation', id: 'eq', expression: 'x^2' }],
+    ['table', { kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [] }],
+  ] as [string, ArticleBlock][]) {
+    it(`${label} は #7 で描画対象になった`, () => {
+      assert.doesNotThrow(() =>
+        assertArticleDocumentRenderable({ blocks: [blockValue] }, { slug: 'ai-stats-03' }),
       );
     });
   }
 
-  it('リストの入れ子に隠れた未対応ブロックも見つける', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable({
-          blocks: [
-            {
-              kind: 'list',
-              ordered: false,
-              items: [
-                {
-                  id: 'i',
-                  richText: [],
-                  children: [{ kind: 'equation', id: 'eq', expression: 'x' }],
-                },
-              ],
-            },
-          ],
-        }),
-      DeferredArticleBlockError,
+  it('リストの入れ子にある数式も通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
+          {
+            kind: 'list',
+            ordered: false,
+            items: [
+              {
+                id: 'i',
+                richText: [],
+                children: [{ kind: 'equation', id: 'eq', expression: 'x' }],
+              },
+            ],
+          },
+        ],
+      }),
     );
   });
 
-  it('quote / callout の子に隠れた未対応ブロックも見つける', () => {
+  it('quote / callout の子にある表と数式も通す', () => {
     for (const parent of [
       { kind: 'quote', id: 'q', richText: [], children: [{ kind: 'table', id: 't', hasColumnHeader: false, hasRowHeader: false, rows: [] }] },
       { kind: 'callout', id: 'k', richText: [], icon: null, children: [{ kind: 'equation', id: 'e', expression: 'x' }] },
     ] as ArticleBlock[]) {
-      assert.throws(() => assertArticleDocumentRenderable({ blocks: [parent] }), DeferredArticleBlockError);
+      assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: [parent] }));
     }
   });
 
-  it('画像は Issue #6 で描画対象になった（ローカル化済みなら通る）', () => {
-    // 「remote URL のまま描かせない」責務は assertNoRemoteArticleImages へ移った。
-    // ここで落とさなくなったこと自体は、その検査があって初めて安全になる
+  it('画像は引き続き描画対象（ローカル化済みなら通る）', () => {
     const local: ArticleBlock = {
       kind: 'image',
       id: 'img',
@@ -135,7 +123,7 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
     assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: [local] }));
   });
 
-  it('画像 caption のインライン数式は引き続き落とす', () => {
+  it('画像 caption のインライン数式も #7 で描画対象になった', () => {
     const withEquation: ArticleBlock = {
       kind: 'image',
       id: 'img',
@@ -143,19 +131,16 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
       caption: [{ kind: 'equation', expression: 'x^2' }],
       alt: '図',
     };
-    assert.throws(
-      () => assertArticleDocumentRenderable({ blocks: [withEquation] }, { slug: 's' }),
-      DeferredArticleBlockError,
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({ blocks: [withEquation] }, { slug: 's' }),
     );
   });
 
-  it('対応済みブロックに混ざった 1 件でも見逃さない', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable({
-          blocks: [...renderable, { kind: 'equation', id: 'eq', expression: 'x' }, paragraph('p2')],
-        }),
-      DeferredArticleBlockError,
+  it('対応済みブロックへ equation を混ぜても全体を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [...renderable, { kind: 'equation', id: 'eq', expression: 'x' }, paragraph('p2')],
+      }),
     );
   });
 });
@@ -221,136 +206,105 @@ describe('safeHref: ブラウザの URL 前処理を踏まえた回避を通さ�
   });
 });
 
-describe('assertArticleDocumentRenderable: rich text 内のインライン数式も記事単位で拾う', () => {
+describe('assertArticleDocumentRenderable: rich text 内のインライン数式を描画対象にする', () => {
   const equation: ArticleRichText = { kind: 'equation', expression: 'y_{ij} = \\mu + g_i' };
   const plain = textNode({ text: '式は ' });
 
-  /** 診断に slug・ブロック ID・担当 Issue が揃っているか */
-  const hasFullDiagnostics = (blockId: string) => (e: Error) =>
-    e instanceof DeferredArticleBlockError &&
-    e.message.includes('ai-stats-03') &&
-    e.message.includes(blockId) &&
-    e.message.includes('Issue #7') &&
-    e.message.includes('equation');
-
-  it('段落の中のインライン数式で落ちる', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
-          { blocks: [{ kind: 'paragraph', id: 'p1', richText: [plain, equation] }] },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('p1'),
+  it('段落のインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable(
+        { blocks: [{ kind: 'paragraph', id: 'p1', richText: [plain, equation] }] },
+        { slug: 'ai-stats-03' },
+      ),
     );
   });
 
-  it('見出しの中のインライン数式で落ちる', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
-          { blocks: [{ kind: 'heading', id: 'h1', level: 2, richText: [equation] }] },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('h1'),
+  it('見出しのインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [{ kind: 'heading', id: 'h1', level: 2, richText: [equation] }],
+      }),
     );
   });
 
-  it('リスト項目のインライン数式で落ちる（項目 ID を出す）', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
+  it('リスト項目のインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
+          { kind: 'list', ordered: false, items: [{ id: 'li1', richText: [equation], children: [] }] },
+        ],
+      }),
+    );
+  });
+
+  it('入れ子のリスト項目にあるインライン数式も通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
           {
-            blocks: [
-              { kind: 'list', ordered: false, items: [{ id: 'li1', richText: [equation], children: [] }] },
-            ],
-          },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('li1'),
-    );
-  });
-
-  it('入れ子のリスト項目に隠れたインライン数式も見つける', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
-          {
-            blocks: [
+            kind: 'list',
+            ordered: false,
+            items: [
               {
-                kind: 'list',
-                ordered: false,
-                items: [
+                id: 'li1',
+                richText: [plain],
+                children: [
                   {
-                    id: 'li1',
-                    richText: [plain],
-                    children: [
-                      {
-                        kind: 'list',
-                        ordered: true,
-                        items: [{ id: 'li2', richText: [equation], children: [] }],
-                      },
-                    ],
+                    kind: 'list',
+                    ordered: true,
+                    items: [{ id: 'li2', richText: [equation], children: [] }],
                   },
                 ],
               },
             ],
           },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('li2'),
+        ],
+      }),
     );
   });
 
-  it('callout / quote の本文と子のインライン数式で落ちる', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
-          { blocks: [{ kind: 'callout', id: 'c1', richText: [equation], icon: null, children: [] }] },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('c1'),
+  it('callout / quote の本文と子のインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [{ kind: 'callout', id: 'c1', richText: [equation], icon: null, children: [] }],
+      }),
     );
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
           {
-            blocks: [
-              {
-                kind: 'quote',
-                id: 'q1',
-                richText: [plain],
-                children: [{ kind: 'paragraph', id: 'q1a', richText: [equation] }],
-              },
-            ],
+            kind: 'quote',
+            id: 'q1',
+            richText: [plain],
+            children: [{ kind: 'paragraph', id: 'q1a', richText: [equation] }],
           },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('q1a'),
+        ],
+      }),
     );
   });
 
-  it('code の caption のインライン数式で落ちる', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable(
-          { blocks: [{ kind: 'code', id: 'cd1', code: 'x', language: null, caption: [equation] }] },
-          { slug: 'ai-stats-03' },
-        ),
-      hasFullDiagnostics('cd1'),
+  it('code caption のインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [{ kind: 'code', id: 'cd1', code: 'x', language: null, caption: [equation] }],
+      }),
     );
   });
 
-  it('インライン数式は「ブロック」とは書かない（#8 でどちらか分かる必要がある）', () => {
-    assert.throws(
-      () =>
-        assertArticleDocumentRenderable({
-          blocks: [{ kind: 'paragraph', id: 'p1', richText: [equation] }],
-        }),
-      (e: Error) => e.message.includes('インライン equation') && !e.message.includes('equation ブロック'),
+  it('table cell のインライン数式を通す', () => {
+    assert.doesNotThrow(() =>
+      assertArticleDocumentRenderable({
+        blocks: [
+          {
+            kind: 'table', id: 't', hasColumnHeader: false, hasRowHeader: false,
+            rows: [{ id: 'r', cells: [[equation]] }],
+          },
+        ],
+      }),
     );
   });
 
-  it('数式を含まない本文は通る', () => {
+  it('数式を含まない本文も引き続き通る', () => {
     assert.doesNotThrow(() =>
       assertArticleDocumentRenderable({
         blocks: [

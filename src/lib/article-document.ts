@@ -19,8 +19,8 @@
  * 本文中の文字列 1 断片。
  *
  * インライン数式を素のテキストへ潰さない。`$x^2$` のような文字列にしてしまうと
- * 数式だった事実が失われ、Issue #7 で KaTeX を入れるときに正規表現で推測し直す
- * ことになる（Issue #7 が明示的に禁じている）。型で分けて持つ。
+ * 数式だった事実が失われ、KaTeX へ渡すときに正規表現で推測し直すことになる。
+ * Notion 側の意味を正として型で分けて持つ。
  */
 export type ArticleRichText =
   | {
@@ -34,7 +34,7 @@ export type ArticleRichText =
       /** 正規化済みのリンク先。危険なスキームは正規化の時点で落としてある */
       href: string | null;
     }
-  /** インライン数式。KaTeX 化は Issue #7 */
+  /** インライン数式。ArticleMath が KaTeX SSR する */
   | { kind: 'equation'; expression: string };
 
 /** callout のアイコン。表示の作り込みは後続でよいが、情報は捨てない */
@@ -85,9 +85,9 @@ export type ArticleBlock =
   | { kind: 'code'; id: string; code: string; language: string | null; caption: ArticleRichText[] }
   /** 描画は Issue #6。ここでは取得元・caption・alt を失わずに持つだけ */
   | { kind: 'image'; id: string; source: ArticleImageSource; caption: ArticleRichText[]; alt: string | null }
-  /** 描画は Issue #7。expression をそのまま持つ */
+  /** display 数式。expression を KaTeX SSR へ渡す */
   | { kind: 'equation'; id: string; expression: string }
-  /** 描画は Issue #7。行・セル・ヘッダ情報を持つ */
+  /** 行・セル・ヘッダ情報を semantic table の描画へ渡す */
   | {
       kind: 'table';
       id: string;
@@ -110,13 +110,12 @@ const RENDERABLE_KINDS = new Set<ArticleBlock['kind']>([
   // Issue #6 でローカル化と figure 描画を実装した。ただし描けるのは
   // source が local になったものだけで、その確認は assertNoRemoteArticleImages が行う
   'image',
+  'equation',
+  'table',
 ]);
 
 /** 正規化はするが描画は後続 Issue に送るブロックと、その担当 Issue */
-const DEFERRED_KINDS: Partial<Record<ArticleBlock['kind'], { issue: string; reason: string }>> = {
-  equation: { issue: 'Issue #7', reason: 'KaTeX による数式描画がまだありません' },
-  table: { issue: 'Issue #7', reason: '科学記事向けの table 描画がまだありません' },
-};
+const DEFERRED_KINDS: Partial<Record<ArticleBlock['kind'], { issue: string; reason: string }>> = {};
 
 /**
  * 描画がまだ用意できていないブロックに当たったことを表す例外。
@@ -171,18 +170,6 @@ export function assertArticleDocumentRenderable(
  * 走査からは漏れる。漏らすと最終的に ArticleRichText コンポーネントが落とすが、
  * そこには記事も断片の位置も無く、どの記事を直せばよいのか分からない診断になる。
  */
-function assertRichTextRenderable(
-  nodes: readonly ArticleRichText[],
-  context: { slug?: string },
-  blockId: string,
-): void {
-  for (const node of nodes) {
-    if (node.kind === 'equation') {
-      throw new DeferredArticleBlockError('equation', { ...context, blockId, inline: true });
-    }
-  }
-}
-
 function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }): void {
   if (!RENDERABLE_KINDS.has(block.kind)) {
     throw new DeferredArticleBlockError(block.kind, {
@@ -195,33 +182,28 @@ function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }):
   switch (block.kind) {
     case 'paragraph':
     case 'heading':
-      assertRichTextRenderable(block.richText, context, block.id);
       return;
 
     case 'list':
       for (const item of block.items) {
-        assertRichTextRenderable(item.richText, context, item.id);
         for (const child of item.children) assertBlockRenderable(child, context);
       }
       return;
 
     case 'quote':
     case 'callout':
-      assertRichTextRenderable(block.richText, context, block.id);
       for (const child of block.children) assertBlockRenderable(child, context);
       return;
 
     case 'code':
     case 'image':
-      // 本文（コード文字列 / 画像）は rich text ではない。caption だけが対象
-      assertRichTextRenderable(block.caption, context, block.id);
-      return;
-
+    case 'equation':
+    case 'table':
     case 'divider':
       return;
 
     default:
-      // image / equation / table は上の RENDERABLE_KINDS で既に落ちている
+      // ArticleBlock が増えたときは RENDERABLE_KINDS 側で落ちる
       return;
   }
 }
@@ -272,9 +254,8 @@ export function decorationTags(node: ArticleRichText): DecorationTag[] {
  * どちらも「入れ子の奥まで漏れなく辿る」ことが正しさの前提になる。同じ再帰を
  * 2 度書くと、片方だけ callout の子を見落とす、といったずれ方をする。
  *
- * 描画が Issue #7 待ちのブロック（equation / table）も辿る。table のセルに
- * リンクが入っていることはあり、#7 で描けるようになった瞬間に未検査の URL が
- * 出ていくのは避けたい。
+ * equation / table も辿る。table のセルにリンクが入っていることはあるため、
+ * semantic table の描画前に他の本文と同じ URL 検査を通す。
  */
 export function* walkArticleBlocks(
   blocks: readonly ArticleBlock[],

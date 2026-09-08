@@ -19,6 +19,7 @@
     "@astrojs/rss": "^4.0.17",
     "@astrojs/vercel": "^10.0.7",
     "astro": "^6.0.4",
+    "katex": "^0.16.22",
     "marked": "^17.0.4",
     "sharp": "^0.34.3",
     "zod": "^4.5.4"

@@ -326,3 +326,13 @@ https://charts.example/render?id=2   ← 2 枚目に 1 枚目の中身が出る�
 | legacy 本文の画像 | `full-url`（既定） | 旧ドメインの静的ファイル。クエリ違いを同一視する理由が無い |
 
 **既定は安全側の `full-url`。** 取り違えた画像を出すより、同じ画像が 2 つ落ちる方がはるかに軽い。`buildFileName` には既定値を置かない——「どちらの意味の URL か」は呼び出し側にしか分からず、下位層で黙って決めると同じ取り違えが再発する。
+
+## D-50 — 数式は型情報から KaTeX SSR し、表はヘッダ意味を HTML へ写す
+
+Notion の `equation` block / rich text だけを数式として扱う。通常の本文文字列に `$...$` が見えても正規表現で数式へ変換しない。正規化層で保持した `expression` を KaTeX の `renderToString` へ渡し、HTML と MathML を build 時に生成する。ブラウザ側 JavaScriptは数式表示の必須条件にしない。
+
+KaTeX は `throwOnError: true` / `strict: error` / `trust: false` とする。不正な TeX を赤字テキストへフォールバックすると「ビルド成功だが式が壊れている」状態になるため、公開前に失敗させる。display 数式は横スクロールできる領域へ入れ、狭い画面で本文全体を押し広げない。
+
+Notion table の `has_column_header` / `has_row_header` は見た目だけでなく、`thead` / `tbody` と `th scope="col"` / `th scope="row"` へ写す。表全体はキーボードでフォーカスできる横スクロール領域へ入れる。セル内の rich text は段落と同じ renderer を使うので、リンク・装飾・インライン数式の意味を保つ。
+
+code block は `pre > code`、inline code は `code` のまま分離する。Notion の language は表示値を `data-language` に保持し、CSS class に使う値は英数字・ハイフン・アンダースコアへ正規化する。

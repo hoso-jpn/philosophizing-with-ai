@@ -32,7 +32,7 @@ const { post } = Astro.props;
 // ここを通る前にビルドが落ちる（Issue #6）。
 const source = post.contentSource;
 
-// 描けないブロック（image は #6、equation と table は #7）が含まれていたら、
+// 将来 ArticleBlock に描画未対応の種別が増えていないか、
 // 描画に入る前に記事単位で落とす。コンポーネント側でも弾くが、ここで出す方が
 // どの記事かが分かる
 if (source.kind === 'notion-page') {

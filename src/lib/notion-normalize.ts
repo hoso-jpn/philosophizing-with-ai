@@ -132,7 +132,7 @@ function normalizeRichTextItem(
         detail: 'インライン数式に expression がありません',
       });
     }
-    // 素のテキストへ潰さない。KaTeX 化は Issue #7
+    // 素のテキストへ潰さない。後段の KaTeX SSR が型を見て描画する
     return { kind: 'equation', expression };
   }
 

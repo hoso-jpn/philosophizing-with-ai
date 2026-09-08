@@ -18,7 +18,7 @@ const { icon } = block;
 <aside class="article-callout">
   {icon?.kind === 'emoji' && <span class="article-callout__icon" aria-hidden="true">{icon.emoji}</span>}
   <div class="article-callout__body">
-    <p><ArticleRichText nodes={block.richText} /></p>
+    <p><ArticleRichText nodes={block.richText} blockId={block.id} /></p>
     {block.children.length > 0 && <ArticleBlocks blocks={block.children} />}
   </div>
 </aside>

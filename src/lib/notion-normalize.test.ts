@@ -136,7 +136,7 @@ describe('normalizeBlocks: 基本ブロック', () => {
   });
 });
 
-describe('normalizeBlocks: 描画を後続へ送るブロックも情報を捨てない', () => {
+describe('normalizeBlocks: image / equation / table の意味情報を捨てない', () => {
   it('image: Notion ホストの署名付き URL を external と区別して持つ', async () => {
     const [node] = await normalize([
       block('image', {

@@ -2,22 +2,23 @@
 /**
  * コードブロック。
  *
- * シンタックスハイライトは入れない（Issue #7）。言語は class と data 属性に
- * 残しておくので、あとから highlighter を足すときに情報が揃っている。
+ * シンタックスハイライトは本文を読むための必須条件ではないので入れない。
+ * 言語は正規化した class と data 属性に残し、後から highlighter を足せるようにする。
  */
 import type { ArticleBlock } from '../../lib/article-document';
+import { codeLanguageClass } from '../../lib/article-code';
 import ArticleRichText from './ArticleRichText.astro';
 
 interface Props {
   block: Extract<ArticleBlock, { kind: 'code' }>;
 }
 const { block } = Astro.props as Props;
-const languageClass = block.language ? `language-${block.language}` : undefined;
+const languageClass = codeLanguageClass(block.language);
 ---
 <figure class="article-code">
   <pre><code class={languageClass} data-language={block.language}>{block.code}</code></pre>
   {block.caption.length > 0 && (
-    <figcaption><ArticleRichText nodes={block.caption} /></figcaption>
+    <figcaption><ArticleRichText nodes={block.caption} blockId={block.id} /></figcaption>
   )}
 </figure>
 
