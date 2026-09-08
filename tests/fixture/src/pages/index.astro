@@ -1,6 +1,7 @@
 ---
 import ArticleContent from '../../../../src/components/article/ArticleContent.astro';
 import LegacyArticleContent from '../../../../src/components/article/LegacyArticleContent.astro';
+import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
 import type { ArticleDocument, ArticleRichText } from '../../../../src/lib/article-document';
 
 export const prerender = true;
@@ -57,11 +58,14 @@ const document: ArticleDocument = {
   ],
 };
 ---
-<!doctype html>
-<html lang="ja">
-  <head><meta charset="utf-8" /><title>Renderer fixture</title></head>
-  <body>
-    <ArticleContent document={document} />
-    <LegacyArticleContent content={'## Legacy fixture\n\n既存の **太字** と [内部リンク](/about) を維持する。'} />
-  </body>
-</html>
+<ArticleShell
+  title="AIと統計学03；Renderer fixture"
+  description="共通 article shell の fixture"
+  pubDate="2026-09-08"
+  seriesName="AIと統計学"
+  tags={['統計学']}
+>
+  <ArticleContent document={document} />
+  <LegacyArticleContent content={'## Legacy fixture\n\n既存の **太字** と [内部リンク](/about) を維持する。'} />
+  <Fragment slot="after-content"><section id="comments-fixture"><h2>コメント</h2></section></Fragment>
+</ArticleShell>

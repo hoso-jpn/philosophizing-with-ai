@@ -64,6 +64,13 @@ assert.equal((html.match(/<figcaption(?:\s|>)/g) ?? []).length, 7, '6 図と cod
 assert.match(html, /<div class="notion-content"[^>]*><h2>Legacy fixture<\/h2>/, 'legacy renderer が退行しています');
 assert.match(html, /<strong>太字<\/strong>/, 'legacy の Markdown 装飾が失われています');
 assert.match(html, /<a href="\/about">内部リンク<\/a>/, 'legacy の内部リンクが失われています');
+assert.match(html, /<meta name="description" content="共通 article shell の fixture">/, 'SEO description がありません');
+assert.match(html, /<header class="article-header"/, '共通 article header がありません');
+assert.match(html, /<span class="series-badge"[^>]*>AIと統計学<\/span>/, 'series badge がありません');
+assert.match(html, /<time datetime="2026-09-08T00:00:00.000Z">/, '公開日が semantic time でありません');
+assert.match(html, /<nav class="article-tags" aria-label="記事のタグ"/, 'tag navigation が semantic でありません');
+assert.match(html, /<footer class="article-footer"/, '記事後セクションの配置境界がありません');
+assert.match(html, /id="comments-fixture"/, 'コメント欄用 slot が描画されていません');
 assert.doesNotMatch(html, /amazonaws\.com|philosophizing-with-ai\.com/, '禁止ホストが残っています');
 
 // KaTeX の視覚層は支援技術から隠し、MathML だけを読ませる

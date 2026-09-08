@@ -1,0 +1,83 @@
+---
+import FormattedDate from '../FormattedDate.astro';
+import { getSlugFromTag } from '../../lib/tag-slugs';
+
+interface Props {
+  title: string;
+  pubDate: string;
+  seriesName?: string | null;
+  tags?: string[];
+  heroImage?: string | null;
+}
+
+const { title, pubDate, seriesName = null, tags = [], heroImage = null } = Astro.props as Props;
+---
+<header class="article-header">
+  <div class="article-header__meta">
+    {seriesName && <span class="series-badge">{seriesName}</span>}
+    <FormattedDate date={pubDate} />
+  </div>
+  <h1>{title}</h1>
+  {heroImage && (
+    <img src={heroImage} alt={title} class="article-header__hero" fetchpriority="high" />
+  )}
+  {tags.length > 0 && (
+    <nav class="article-tags" aria-label="記事のタグ">
+      <ul>
+        {tags.map((tag) => <li><a href={`/tags/${getSlugFromTag(tag)}`}>{tag}</a></li>)}
+      </ul>
+    </nav>
+  )}
+</header>
+
+<style>
+  .article-header { margin-bottom: 2rem; }
+  .article-header__meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+  }
+  .series-badge {
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--green);
+    border-radius: 999px;
+    color: var(--green-bright);
+    letter-spacing: 0.04em;
+  }
+  h1 { margin: 0; font-size: clamp(1.65rem, 5vw, 2.25rem); overflow-wrap: anywhere; }
+  .article-header__hero {
+    display: block;
+    width: 100%;
+    max-height: 450px;
+    margin: 1.5rem 0 0;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: var(--box-shadow);
+  }
+  .article-tags ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1.25rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .article-tags a {
+    display: inline-block;
+    padding: 0.2rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--green-bright);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    text-decoration: none;
+  }
+  .article-tags a:hover,
+  .article-tags a:focus-visible { border-color: var(--green); color: var(--text); }
+</style>
