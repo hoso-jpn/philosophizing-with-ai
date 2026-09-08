@@ -1,0 +1,90 @@
+---
+import type { ArticleBlock } from '../../lib/article-document';
+import { assertArticleTableRenderable } from '../../lib/article-document';
+import { splitArticleTableRows } from '../../lib/article-table';
+import ArticleTableRow from './ArticleTableRow.astro';
+
+interface Props {
+  block: Extract<ArticleBlock, { kind: 'table' }>;
+}
+
+const { block } = Astro.props as Props;
+
+// 記事単位の診断は assertArticleDocumentRenderable が先に出すが、ここでも弾く。
+// 空の rows をそのまま描くと、中身の無い枠と空の ARIA 領域だけが公開される
+assertArticleTableRenderable(block);
+
+const { headerRow, bodyRows } = splitArticleTableRows(block);
+---
+<div class="article-table-scroll" role="region" aria-label="記事内の表" tabindex="0">
+  <table>
+    {headerRow && (
+      <thead>
+        <ArticleTableRow row={headerRow} columnHeader={true} rowHeader={block.hasRowHeader} />
+      </thead>
+    )}
+    <tbody>
+      {bodyRows.map((row) => (
+        <ArticleTableRow row={row} columnHeader={false} rowHeader={block.hasRowHeader} />
+      ))}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .article-table-scroll {
+    max-width: 100%;
+    margin: 1.75em 0;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .article-table-scroll:focus-visible {
+    outline: 2px solid var(--green-bright);
+    outline-offset: 2px;
+  }
+
+  table {
+    width: 100%;
+    min-width: max-content;
+    border-collapse: collapse;
+    font-family: var(--font-sans);
+    font-size: 0.92em;
+  }
+
+  .article-table-scroll :global(th),
+  .article-table-scroll :global(td) {
+    padding: 0.65em 0.8em;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .article-table-scroll :global(th:last-child),
+  .article-table-scroll :global(td:last-child) {
+    border-right: 0;
+  }
+
+  .article-table-scroll :global(tbody tr:last-child > *) {
+    border-bottom: 0;
+  }
+
+  .article-table-scroll :global(th) {
+    background: color-mix(in srgb, var(--green) 20%, var(--bg-card));
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  .article-table-scroll :global(td) {
+    background: var(--bg-card);
+  }
+
+  @media (max-width: 600px) {
+    .article-table-scroll { margin: 1.4em 0; }
+    table { font-size: 0.86em; }
+    .article-table-scroll :global(th),
+    .article-table-scroll :global(td) { padding: 0.55em 0.65em; }
+  }
+</style>

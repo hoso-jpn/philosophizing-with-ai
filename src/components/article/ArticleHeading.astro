@@ -15,4 +15,4 @@ const { block } = Astro.props as Props;
 
 const Tag = (['h2', 'h3', 'h4'] as const)[block.level - 1];
 ---
-<Tag><ArticleRichText nodes={block.richText} /></Tag>
+<Tag><ArticleRichText nodes={block.richText} blockId={block.id} /></Tag>

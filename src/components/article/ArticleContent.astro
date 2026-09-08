@@ -7,6 +7,7 @@
  */
 import type { ArticleDocument } from '../../lib/article-document';
 import ArticleBlocks from './ArticleBlocks.astro';
+import 'katex/dist/katex.min.css';
 
 interface Props {
   document: ArticleDocument;
@@ -34,6 +35,7 @@ const { document } = Astro.props as Props;
   .article-content :global(li > ol) { margin: 0.4em 0 0; }
 
   .article-content :global(pre) { max-width: 100%; }
+  .article-content :global(pre code) { white-space: pre; }
   .article-content :global(img) { max-width: 100%; height: auto; }
 
   @media (max-width: 600px) {

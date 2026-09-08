@@ -32,7 +32,7 @@ const alt = block.alt ?? '';
     <img src={src} alt={alt} loading="lazy" decoding="async" />
   </div>
   {block.caption.length > 0 && (
-    <figcaption><ArticleRichText nodes={block.caption} /></figcaption>
+    <figcaption><ArticleRichText nodes={block.caption} blockId={block.id} /></figcaption>
   )}
 </figure>
 

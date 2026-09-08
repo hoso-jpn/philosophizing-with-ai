@@ -1,0 +1,23 @@
+---
+import type { ArticleTableRow } from '../../lib/article-document';
+import { tableCellHeaderScope } from '../../lib/article-table';
+import ArticleRichText from './ArticleRichText.astro';
+
+interface Props {
+  row: ArticleTableRow;
+  columnHeader: boolean;
+  rowHeader: boolean;
+}
+
+const { row, columnHeader, rowHeader } = Astro.props as Props;
+---
+<tr>
+  {row.cells.map((cell, index) => {
+    const scope = tableCellHeaderScope({ columnHeader, rowHeader }, index);
+    return scope ? (
+      <th scope={scope}><ArticleRichText nodes={cell} blockId={row.id} /></th>
+    ) : (
+      <td><ArticleRichText nodes={cell} blockId={row.id} /></td>
+    );
+  })}
+</tr>

@@ -1,0 +1,41 @@
+---
+/** KaTeX を build 時に描画する。ブラウザ側 JavaScript は不要。 */
+import { renderArticleMath } from '../../lib/article-math';
+
+interface Props {
+  expression: string;
+  displayMode: boolean;
+  slug?: string;
+  blockId?: string;
+}
+
+const { expression, displayMode, slug, blockId } = Astro.props as Props;
+const html = renderArticleMath(expression, { displayMode, slug, blockId });
+---
+{displayMode ? (
+  <div class="article-math article-math--display" set:html={html}></div>
+) : (
+  <span class="article-math article-math--inline" set:html={html}></span>
+)}
+
+<style>
+  .article-math--inline {
+    /* 式の途中だけで折り返して意味を壊さない */
+    white-space: nowrap;
+  }
+
+  .article-math--display {
+    max-width: 100%;
+    margin: 1.5em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.35em 0;
+  }
+
+  /* KaTeX が生成する内側の要素には Astro の scoped 属性が付かない */
+  .article-math--display :global(.katex-display) {
+    margin: 0;
+    min-width: max-content;
+    text-align: center;
+  }
+</style>

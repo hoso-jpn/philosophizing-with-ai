@@ -7,4 +7,4 @@ interface Props {
 }
 const { block } = Astro.props as Props;
 ---
-<p><ArticleRichText nodes={block.richText} /></p>
+<p><ArticleRichText nodes={block.richText} blockId={block.id} /></p>

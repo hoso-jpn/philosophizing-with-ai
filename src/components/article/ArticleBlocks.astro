@@ -18,17 +18,14 @@ import ArticleQuote from './ArticleQuote.astro';
 import ArticleCallout from './ArticleCallout.astro';
 import ArticleCode from './ArticleCode.astro';
 import ArticleFigure from './ArticleFigure.astro';
+import ArticleEquation from './ArticleEquation.astro';
+import ArticleTable from './ArticleTable.astro';
 
 interface Props {
   blocks: readonly ArticleBlock[];
 }
 const { blocks } = Astro.props as Props;
 
-for (const block of blocks) {
-  if (block.kind === 'equation' || block.kind === 'table') {
-    throw new DeferredArticleBlockError(block.kind, { blockId: block.id });
-  }
-}
 ---
 {blocks.map((block: ArticleBlock) => {
   switch (block.kind) {
@@ -48,8 +45,12 @@ for (const block of blocks) {
       return <ArticleCode block={block} />;
     case 'image':
       return <ArticleFigure block={block} />;
+    case 'equation':
+      return <ArticleEquation block={block} />;
+    case 'table':
+      return <ArticleTable block={block} />;
     default:
-      // 上のループで弾いているのでここへは来ない。網羅性の保険
+      // ArticleBlock に種別が増えたのに描画分岐を追加し忘れた場合の保険
       throw new DeferredArticleBlockError((block as ArticleBlock).kind);
   }
 })}
