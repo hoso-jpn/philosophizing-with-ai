@@ -58,6 +58,25 @@ const hasAfterContent = Astro.slots.has('after-content');
   .article-body :global(video),
   .article-body :global(pre),
   .article-body :global(table) { max-width: 100%; }
+
+  /**
+   * 記事全体の横 overflow はこの shell が受け持つ。
+   *
+   * 表・display 数式・コードは自前の scroll container を持つが、**インライン数式
+   * だけは持たない**。ArticleMath は式の途中で折り返さないよう
+   * `white-space: nowrap` を当てており、上位に幅の制限が無いと本文の外へ出る。
+   * 360px 幅の端末では `y_{ij} = \mu + a_i + b_j + e_{ij}` 程度で既に超えるため、
+   * 記事 1 本ぶんの横スクロールが出てしまう。
+   *
+   * 切り取る（overflow: hidden）と式が読めなくなるので、その式だけを
+   * スクロールさせる。ベースラインが崩れないよう vertical-align を添える。
+   */
+  .article-body :global(.article-math--inline) {
+    display: inline-block;
+    max-width: 100%;
+    overflow-x: auto;
+    vertical-align: bottom;
+  }
   .article-footer { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }
   @media (max-width: 600px) {
     .article-main { padding: 1.25rem 0.8rem; }

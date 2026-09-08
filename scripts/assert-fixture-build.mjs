@@ -87,6 +87,13 @@ assert.doesNotMatch(html, /<tbody[^>]*>\s*<\/tbody>/, '中身の無い tbody が
 // CSS が 1 つも当たらない）を検出できない
 const css = await emittedCss();
 assertScopedStyleApplies(css, 'notion-content', 'line-height:1\\.8');
+// インライン数式は自前の scroll container を持たない。shell 側で幅を止めないと
+// 記事 1 本ぶんの横スクロールがモバイルで出る
+assert.match(
+  css,
+  /\.article-body\[data-astro-cid-[a-z0-9]+\][^{]*\.article-math--inline[^{]*\{[^}]*overflow-x:auto/,
+  'インライン数式に横方向の封じ込めがありません（記事全体が横スクロールします）',
+);
 assertScopedStyleApplies(css, 'article-content', 'line-height:1\\.8');
 assert.match(
   css,
