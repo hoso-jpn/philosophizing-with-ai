@@ -3,14 +3,17 @@ import { describe, it } from 'node:test';
 
 import {
   MissingArticleContentError,
-  PAGE_BODY_INVARIANTS_IMPLEMENTED,
-  UnguardedPageBodySourceError,
-  assertPageBodySourcesAreGuarded,
   createPageBodyLoader,
   resolveArticleContentSource,
-  type ArticleContentSource,
   type ContentSourceInput,
 } from './content-source.ts';
+import { ArticleUrlPolicyError, assertArticleUrlInvariants } from './article-links.ts';
+import {
+  RemoteArticleImageError,
+  assertNoRemoteArticleImages,
+  localizeArticleDocumentMedia,
+} from './article-media.ts';
+import type { ArticleDocument, ArticleImageBlock } from './article-document.ts';
 import {
   PAGE_BODY_MIGRATED_SLUGS,
   UnknownMigratedSlugError,
@@ -288,84 +291,76 @@ describe('createPageBodyLoader: 1 ビルド 1 スナップショット', () => {
 });
 
 
-describe('assertPageBodySourcesAreGuarded: #6 未実装のページ本文を公開経路へ通さない', () => {
-  const legacy = (slug: string) => ({
-    slug,
-    contentSource: { kind: 'legacy', content: '<p>本文</p>' } as ArticleContentSource,
+describe('ページ本文の不変条件が暫定 guard を置き換えている（Issue #6）', () => {
+  const docWith = (blocks: ArticleDocument['blocks']): ArticleDocument => ({ blocks });
+  const link = (href: string) => ({
+    kind: 'text' as const,
+    text: 'ラベル',
+    bold: false,
+    italic: false,
+    strikethrough: false,
+    underline: false,
+    code: false,
+    href,
   });
-  const pageBody = (slug: string) => ({
-    slug,
-    contentSource: {
-      kind: 'notion-page',
-      pageId: `page-${slug}`,
-      document: { blocks: [] },
-    } as ArticleContentSource,
+  const imageBlock = (source: ArticleImageBlock['source']): ArticleImageBlock => ({
+    kind: 'image',
+    id: 'img-1',
+    source,
+    caption: [{ ...link(''), href: null, text: '図1 概要' }],
+    alt: null,
   });
 
-  it('不変条件が未実装なら、ページ本文 source があるだけで落ちる', () => {
+  it('#4 の暫定 guard は削除されている（フラグではなく実検査になった）', async () => {
+    // フラグを true にするだけの解除を許さないため、export ごと消えていること
+    const module = (await import('./content-source.ts')) as Record<string, unknown>;
+    assert.equal(module.PAGE_BODY_INVARIANTS_IMPLEMENTED, undefined);
+    assert.equal(module.assertPageBodySourcesAreGuarded, undefined);
+    assert.equal(module.UnguardedPageBodySourceError, undefined);
+  });
+
+  it('ページ本文の自サイト絶対 URL でビルドが落ちる', () => {
     assert.throws(
-      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
-      UnguardedPageBodySourceError,
+      () =>
+        assertArticleUrlInvariants(
+          docWith([{ kind: 'paragraph', id: 'p1', richText: [link('https://blog.florigen.ai/posts/x')] }]),
+          { slug: 'migrated-post' },
+        ),
+      ArticleUrlPolicyError,
     );
   });
 
-  it('legacy source だけなら通る', () => {
-    assert.doesNotThrow(() =>
-      assertPageBodySourcesAreGuarded([legacy('a'), legacy('b')], false),
-    );
-  });
-
-  it('記事が 1 件も無くても通る', () => {
-    assert.doesNotThrow(() => assertPageBodySourcesAreGuarded([], false));
-  });
-
-  it('legacy に混ざった 1 件でも見逃さない', () => {
+  it('ローカル化していない画像が残っていたら落ちる（事後条件）', () => {
     assert.throws(
-      () => assertPageBodySourcesAreGuarded([legacy('a'), pageBody('b'), legacy('c')], false),
-      UnguardedPageBodySourceError,
+      () =>
+        assertNoRemoteArticleImages(
+          docWith([imageBlock({ kind: 'notion-hosted', url: 'https://s3.example/x.svg?sig=a', expiryTime: null })]),
+          { slug: 'migrated-post' },
+        ),
+      RemoteArticleImageError,
     );
   });
 
-  it('#6 実装後（フラグ true）は通る', () => {
-    assert.doesNotThrow(() => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], true));
-  });
+  it('ローカル化を通したページ本文は両方の検査を通る', async () => {
+    const document = docWith([
+      { kind: 'paragraph', id: 'p1', richText: [link('/posts/other')] },
+      imageBlock({ kind: 'notion-hosted', url: 'https://s3.example/fig.svg?sig=a', expiryTime: null }),
+    ]);
 
-  it('エラー文が該当 slug と復旧手段を示す', () => {
-    assert.throws(
-      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
-      (e: Error) =>
-        e.message.includes('ai-stat-03') &&
-        e.message.includes('migration-allowlist') &&
-        e.message.includes('Issue #6'),
-    );
-  });
+    assert.doesNotThrow(() => assertArticleUrlInvariants(document, { slug: 'migrated-post' }));
 
-  it('エラー文がフラグを true にするだけの解除を勧めない', () => {
-    // #6 は検査を実装して guard を置き換える。フラグだけ true にすると
-    // 検査が無いまま guard が黙る
-    assert.throws(
-      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')], false),
-      (e: Error) => e.message.includes('true にするだけでは駄目'),
-    );
-  });
-
-  it('既定のフラグは false。#6 が済むまで有効化できない', () => {
-    assert.equal(PAGE_BODY_INVARIANTS_IMPLEMENTED, false);
-    // 既定引数（フラグ未指定）でも落ちること
-    assert.throws(
-      () => assertPageBodySourcesAreGuarded([pageBody('ai-stat-03')]),
-      UnguardedPageBodySourceError,
-    );
-  });
-
-  it('allowlist が空である現行構成では、そもそも notion-page が生まれない', async () => {
-    // 実際の allowlist（空）で解決させると legacy に落ちるので guard も素通りする
-    const resolved = await resolveArticleContentSource(article(), {
-      fetchPageBlocks: neverFetch,
+    const localized = await localizeArticleDocumentMedia(document, { slug: 'migrated-post' }, {
+      localize: async () => '/notion-static/abc.svg',
     });
-    assert.doesNotThrow(() =>
-      assertPageBodySourcesAreGuarded([{ slug: article().slug, contentSource: resolved }]),
-    );
+    assert.doesNotThrow(() => assertNoRemoteArticleImages(localized, { slug: 'migrated-post' }));
+  });
+
+  it('legacy source の記事はページ本文の検査を通らない（既存経路は不変）', async () => {
+    const source = await resolveArticleContentSource(article(), {
+      fetchPageBlocks: neverFetch,
+      usesPageBody: allowNone,
+    });
+    assert.deepEqual(source, { kind: 'legacy', content: '<p>legacy 本文</p>' });
   });
 });
 
@@ -419,35 +414,27 @@ describe('Issue #5 後も #4 の安全契約が効いている', () => {
     assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], []);
   });
 
-  it('ページ本文の不変条件フラグは false のまま（実装は Issue #6）', () => {
-    // renderer が入っても、#6 が済むまでページ本文は公開経路へ進めない
-    assert.equal(PAGE_BODY_INVARIANTS_IMPLEMENTED, false);
-  });
-
-  it('renderer があっても、ページ本文 source は取得の段で止まる', async () => {
-    // Issue #5 で [slug].astro の暫定 throw は renderer に置き換わった。
-    // 安全性がそちらに依存していないことを、データ層だけで確かめる
+  it('ページ本文の source は取得の段で不変条件に掛かる', async () => {
+    // #4 の暫定 guard は Issue #6 で実検査へ置き換わった。安全性が
+    // [slug].astro にも暫定フラグにも依存していないことをデータ層だけで確かめる
     const source = await resolveArticleContentSource(article(), {
       fetchPageBlocks: async () => [paragraph('ページ本文')],
       usesPageBody: allowAll,
     });
     assert.equal(source.kind, 'notion-page');
 
-    assert.throws(
-      () => assertPageBodySourcesAreGuarded([{ slug: 'migrated-post', contentSource: source }]),
-      UnguardedPageBodySourceError,
-    );
+    // 違反があれば落ち、無ければ通る。どちらも取得の段で決まる
+    if (source.kind !== 'notion-page') throw new Error('unreachable');
+    assert.doesNotThrow(() => assertArticleUrlInvariants(source.document, { slug: 'migrated-post' }));
+    assert.doesNotThrow(() => assertNoRemoteArticleImages(source.document, { slug: 'migrated-post' }));
   });
 
-  it('legacy 記事は guard を素通りする（既存記事の経路は変わらない）', async () => {
+  it('legacy 記事はページ本文の検査対象にならない（既存記事の経路は変わらない）', async () => {
     const source = await resolveArticleContentSource(article(), {
       fetchPageBlocks: neverFetch,
       usesPageBody: allowNone,
     });
     assert.deepEqual(source, { kind: 'legacy', content: '<p>legacy 本文</p>' });
-    assert.doesNotThrow(() =>
-      assertPageBodySourcesAreGuarded([{ slug: 'migrated-post', contentSource: source }]),
-    );
   });
 
   it('正規化で未対応ブロックに当たっても legacy へ落ちない', async () => {

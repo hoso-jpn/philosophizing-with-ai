@@ -74,7 +74,6 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
   });
 
   const deferred: [string, ArticleBlock, string][] = [
-    ['image', { kind: 'image', id: 'img', source: { kind: 'external', url: 'https://e/a.png' }, caption: [], alt: null }, 'Issue #6'],
     ['equation', { kind: 'equation', id: 'eq', expression: 'x^2' }, 'Issue #7'],
     ['table', { kind: 'table', id: 'tb', hasColumnHeader: true, hasRowHeader: false, rows: [] }, 'Issue #7'],
   ];
@@ -117,10 +116,37 @@ describe('assertArticleDocumentRenderable: 描けないものを黙って飛ば�
   it('quote / callout の子に隠れた未対応ブロックも見つける', () => {
     for (const parent of [
       { kind: 'quote', id: 'q', richText: [], children: [{ kind: 'table', id: 't', hasColumnHeader: false, hasRowHeader: false, rows: [] }] },
-      { kind: 'callout', id: 'k', richText: [], icon: null, children: [{ kind: 'image', id: 'i', source: { kind: 'external', url: 'https://e/a.png' }, caption: [], alt: null }] },
+      { kind: 'callout', id: 'k', richText: [], icon: null, children: [{ kind: 'equation', id: 'e', expression: 'x' }] },
     ] as ArticleBlock[]) {
       assert.throws(() => assertArticleDocumentRenderable({ blocks: [parent] }), DeferredArticleBlockError);
     }
+  });
+
+  it('画像は Issue #6 で描画対象になった（ローカル化済みなら通る）', () => {
+    // 「remote URL のまま描かせない」責務は assertNoRemoteArticleImages へ移った。
+    // ここで落とさなくなったこと自体は、その検査があって初めて安全になる
+    const local: ArticleBlock = {
+      kind: 'image',
+      id: 'img',
+      source: { kind: 'local', src: '/notion-static/abc.svg' },
+      caption: [],
+      alt: '図',
+    };
+    assert.doesNotThrow(() => assertArticleDocumentRenderable({ blocks: [local] }));
+  });
+
+  it('画像 caption のインライン数式は引き続き落とす', () => {
+    const withEquation: ArticleBlock = {
+      kind: 'image',
+      id: 'img',
+      source: { kind: 'local', src: '/notion-static/abc.svg' },
+      caption: [{ kind: 'equation', expression: 'x^2' }],
+      alt: '図',
+    };
+    assert.throws(
+      () => assertArticleDocumentRenderable({ blocks: [withEquation] }, { slug: 's' }),
+      DeferredArticleBlockError,
+    );
   });
 
   it('対応済みブロックに混ざった 1 件でも見逃さない', () => {

@@ -10,11 +10,12 @@ import {
   findUnknownMigratedSlugs,
 } from './migration-allowlist.ts';
 import {
-  assertPageBodySourcesAreGuarded,
   createPageBodyLoader,
   resolveArticleContentSource,
   type ArticleContentSource,
 } from './content-source.ts';
+import { assertArticleUrlInvariants } from './article-links.ts';
+import { assertNoRemoteArticleImages, localizeArticleDocumentMedia } from './article-media.ts';
 import {
   assertNoExternalContentImages,
   localizeContentImages,
@@ -102,7 +103,11 @@ function reportWarnings(warnings: ParseWarning[]): void {
 async function localizeImages(post: ParsedPost): Promise<ParsedPost> {
   return {
     ...post,
-    heroImage: post.heroImage ? await saveImageLocally(post.heroImage, post.slug) : null,
+    // HeroImage は Notion がホストする署名付き URL。署名は取得のたびに変わるので
+    // クエリを同一性に含めない（含めると毎ビルド別名になり、キャッシュが際限なく増える）
+    heroImage: post.heroImage
+      ? await saveImageLocally(post.heroImage, post.slug, { identity: 'origin-path' })
+      : null,
     legacyContent: await localizeContentImages(post.legacyContent, post.slug),
   };
 }
@@ -114,9 +119,8 @@ async function localizeImages(post: ParsedPost): Promise<ParsedPost> {
  * Astro テンプレートにも同じものを当てている（D-19）。記事側の項目名が変わっても
  * あちらの引数名まで引きずらないよう、ここで詰め替える。
  *
- * **対象は legacy 本文だけ。** Notion のページ本文（blocks）には同じ検査がまだ
- * 掛かっておらず、それは Issue #6 の担当。掛かっていないこと自体は
- * assertPageBodySourcesAreGuarded が公開経路で止めている。
+ * **対象は legacy 本文だけ。** Notion のページ本文には同じ形の検査を
+ * article-links.ts / article-media.ts が型付きの木に対して行う（Issue #6）。
  */
 function toLegacyContentEntries(posts: readonly ParsedPost[]): { slug: string; content: string }[] {
   return posts.map((post) => ({ slug: post.slug, content: post.legacyContent }));
@@ -257,13 +261,38 @@ async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
 
   reportContentSources(resolved);
 
-  // ページ本文には URL / 画像の不変条件がまだ掛かっていない（Issue #6）。
-  // 記事ページのテンプレートではなくここで止める。あちらの throw は Issue #5 で
-  // renderer に置き換わって消えるが、この検査は残り続ける。
-  // 内訳のログより後に置く。何が引っかかったかを先に見せたい
-  assertPageBodySourcesAreGuarded(resolved);
+  // ページ本文にも legacy と同じ不変条件を当てる（Issue #6）。
+  // ここまでは #4 の暫定 guard が「検査が無いこと」を理由に止めていた場所で、
+  // 今はその guard そのものを実際の検査へ置き換えてある
+  return Promise.all(resolved.map(applyPageBodyInvariants));
+}
 
-  return resolved;
+/**
+ * ページ本文に URL と画像の不変条件を当てる。
+ *
+ * legacy 本文の並び（自サイト URL の検査 → ローカル化 → 事後条件）と同じ順序に
+ * してある。検査をローカル化より前に置くのは D-17 のとおりで、自サイトを指す URL は
+ * 「取得に失敗しました（404）」より「相対パスへ書き換える」と言われた方が
+ * 直すべきことを直接指すため。
+ *
+ * legacy source の記事は素通りする。あちらは fetchPosts の前段で既に検査済み。
+ */
+async function applyPageBodyInvariants(post: Post): Promise<Post> {
+  if (post.contentSource.kind !== 'notion-page') return post;
+
+  const { pageId, document } = post.contentSource;
+  const context = { slug: post.slug };
+
+  // 1. URL の正規形（自サイト絶対 URL / Notion のページ ID / //host 形式）
+  assertArticleUrlInvariants(document, context);
+
+  // 2. 画像をビルド時にローカルへ取り込む。失敗は握り潰さない
+  const localized = await localizeArticleDocumentMedia(document, context);
+
+  // 3. 事後条件。外部 URL が残っていたら実装の異常
+  assertNoRemoteArticleImages(localized, context);
+
+  return { ...post, contentSource: { kind: 'notion-page', pageId, document: localized } };
 }
 
 /**

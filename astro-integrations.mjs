@@ -1,4 +1,4 @@
-import { cp, readdir, stat } from 'node:fs/promises';
+import { access, cp, readdir, stat } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +30,13 @@ export function copyDownloadedImages() {
           return;
         }
         const destination = path.join(fileURLToPath(dir), 'notion-static');
-        await cp(SOURCE, destination, { recursive: true });
+        // 画像だけを出力へ入れる。`<digest>.json` は「この成果物は検証を通した」ことを
+        // 記録するビルド用のファイルで、公開する意味が無い（取得元のパスが読者から
+        // 見えるだけになる）。`.tmp` は publish 途中で落ちた場合の残骸
+        await cp(SOURCE, destination, {
+          recursive: true,
+          filter: (source) => !/\.(json|tmp)$/.test(source),
+        });
         logger.info(`notion-static: ${destination} へコピーしました`);
       },
     },
@@ -125,6 +131,90 @@ export function assertTemplateUrls() {
         }
         assertNoSelfReferencingUrls(entries);
         logger.info(`テンプレート ${entries.length} 件の URL を検査: 問題なし`);
+      },
+    },
+  };
+}
+
+/**
+ * 生成 HTML が指しているサイト内の画像が、出力に実在することを確かめる。
+ *
+ * assert-no-remote-images-in-output は「期限付き・停止済みホストの画像が
+ * 残っていないか」を見る。**その裏返しがここ。** ローカル化が成功して
+ * `/notion-static/...` へ書き換わったのに、実ファイルが出力へ入っていなければ、
+ * ビルドは成功したのに画像だけ 404 になる。SSG では誰も気づかないまま公開される。
+ *
+ * copy-downloaded-images より **後**に走らせる必要がある。あちらが
+ * `public/notion-static/` を出力へコピーするので、その前に見ると必ず失敗する。
+ * astro.config.mjs の integrations の並び順がそのまま実行順になる。
+ */
+export function assertLocalImagesExist() {
+  /** 出力に実体を持たない仮想パス。ここに該当するものは検査対象外 */
+  const IGNORED_PREFIXES = ['/_image', '/@'];
+
+  return {
+    name: 'assert-local-images-exist',
+    hooks: {
+      'astro:build:done': async ({ dir, logger }) => {
+        const root = fileURLToPath(dir);
+        const rootResolved = path.resolve(root);
+        const offenders = [];
+        const checked = new Set();
+
+        for (const file of await listHtmlFiles(root)) {
+          const html = await readFile(file, 'utf-8');
+
+          for (const match of html.matchAll(/<img\b[^>]*?\bsrc=["']([^"']+)["']/gi)) {
+            const src = match[1];
+            // サイト内の絶対パスだけを見る。外部 URL は別の検査が担当し、
+            // 相対パスは記事本文では使っていない
+            if (!src.startsWith('/') || src.startsWith('//')) continue;
+            if (IGNORED_PREFIXES.some((prefix) => src.startsWith(prefix))) continue;
+
+            // クエリとフラグメントを落とし、%E3%81%82 のような表記を実ファイル名へ戻す。
+            // 壊れた percent 表記は URIError になる。素の例外で落ちると原因の
+            // 分からないビルド失敗になるので、この検査の違反として扱う
+            let pathname;
+            try {
+              pathname = decodeURIComponent(src.split(/[?#]/)[0]);
+            } catch {
+              offenders.push(`${path.relative(root, file)}: ${src}（URL の % 表記が壊れています）`);
+              continue;
+            }
+
+            const key = `${path.relative(root, file)}\u0000${pathname}`;
+            if (checked.has(key)) continue;
+            checked.add(key);
+
+            // 出力ディレクトリの外を指していないか。
+            //
+            // `/notion-static/../../../../etc/hosts` は path.join で `/etc/hosts` に
+            // なり、実在するので access() が通ってしまう。存在検査が
+            // **通ってはいけない入力で通る**のは、検査として意味を失う（fail open）。
+            const target = path.resolve(rootResolved, `.${pathname}`);
+            if (target !== rootResolved && !target.startsWith(rootResolved + path.sep)) {
+              offenders.push(`${path.relative(root, file)}: ${pathname}（出力ディレクトリの外を指しています）`);
+              continue;
+            }
+
+            try {
+              await access(target);
+            } catch {
+              offenders.push(`${path.relative(root, file)}: ${pathname}`);
+            }
+          }
+        }
+
+        if (offenders.length > 0) {
+          throw new Error(
+            `生成 HTML が指しているサイト内の画像が出力にありません（${offenders.length} 箇所）。\n` +
+              offenders.map((o) => `  - ${o}`).join('\n') +
+              '\n\nビルドは成功していますが、この画像は本番で 404 になります。\n' +
+              '`public/notion-static/` からのコピー（copy-downloaded-images）や\n' +
+              'src/lib/download-image.ts のローカル化を確認してください。',
+          );
+        }
+        logger.info(`生成 HTML のサイト内画像 ${checked.size} 件はすべて出力に存在`);
       },
     },
   };

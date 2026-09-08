@@ -27,9 +27,9 @@ const { post } = Astro.props;
 // legacy   … 既存記事。marked + set:html（従来どおり）
 // notion-page … 移行済み記事。型付き ArticleDocument をコンポーネントで描く
 //
-// **安全性をこのページに依存させないこと。** ページ本文の URL / 画像の不変条件が
-// 未実装であることは lib/content-source.ts の assertPageBodySourcesAreGuarded が
-// 取得の段で止めており（Issue #6 まで有効）、ここを通る前にビルドが落ちる。
+// **安全性をこのページに依存させないこと。** ページ本文の URL と画像の不変条件は
+// lib/notion.ts の applyPageBodyInvariants が取得の段で当てており、違反があれば
+// ここを通る前にビルドが落ちる（Issue #6）。
 const source = post.contentSource;
 
 // 描けないブロック（image は #6、equation と table は #7）が含まれていたら、

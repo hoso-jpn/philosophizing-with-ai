@@ -51,7 +51,15 @@ export type ArticleIcon =
  */
 export type ArticleImageSource =
   | { kind: 'notion-hosted'; url: string; expiryTime: string | null }
-  | { kind: 'external'; url: string };
+  | { kind: 'external'; url: string }
+  /**
+   * ビルド時に取り込み済みのサイト内パス（`/notion-static/<hash>.<ext>`）。
+   *
+   * **描画してよいのはこれだけ。** 残り 2 つは外部の URL で、Notion がホストする
+   * ものは有効期限つきの署名付き URL である。ローカル化を通した記事だけが
+   * この形になり、通っていない記事は描画の手前で落ちる（assertNoRemoteArticleImages）。
+   */
+  | { kind: 'local'; src: string };
 
 export type ArticleListItem = {
   id: string;
@@ -99,16 +107,13 @@ const RENDERABLE_KINDS = new Set<ArticleBlock['kind']>([
   'callout',
   'divider',
   'code',
+  // Issue #6 でローカル化と figure 描画を実装した。ただし描けるのは
+  // source が local になったものだけで、その確認は assertNoRemoteArticleImages が行う
+  'image',
 ]);
 
 /** 正規化はするが描画は後続 Issue に送るブロックと、その担当 Issue */
 const DEFERRED_KINDS: Partial<Record<ArticleBlock['kind'], { issue: string; reason: string }>> = {
-  image: {
-    issue: 'Issue #6',
-    reason:
-      'Notion がホストする画像 URL は署名付きで有効期限があるため、ビルド時に' +
-      'ローカルへ取り込むまで HTML へ出せません',
-  },
   equation: { issue: 'Issue #7', reason: 'KaTeX による数式描画がまだありません' },
   table: { issue: 'Issue #7', reason: '科学記事向けの table 描画がまだありません' },
 };
@@ -207,7 +212,8 @@ function assertBlockRenderable(block: ArticleBlock, context: { slug?: string }):
       return;
 
     case 'code':
-      // code の本文は文字列なので走査しない。caption だけが rich text
+    case 'image':
+      // 本文（コード文字列 / 画像）は rich text ではない。caption だけが対象
       assertRichTextRenderable(block.caption, context, block.id);
       return;
 
@@ -255,4 +261,142 @@ const DECORATION_TAGS: Record<(typeof DECORATION_ORDER)[number], DecorationTag> 
 export function decorationTags(node: ArticleRichText): DecorationTag[] {
   if (node.kind !== 'text') return [];
   return DECORATION_ORDER.filter((key) => node[key] === true).map((key) => DECORATION_TAGS[key]);
+}
+
+/* ------------------------------------------------------------------ 走査 */
+
+/**
+ * 本文の木を辿る共通処理。
+ *
+ * URL の検査（article-links.ts）と画像のローカル化（article-media.ts）は、
+ * どちらも「入れ子の奥まで漏れなく辿る」ことが正しさの前提になる。同じ再帰を
+ * 2 度書くと、片方だけ callout の子を見落とす、といったずれ方をする。
+ *
+ * 描画が Issue #7 待ちのブロック（equation / table）も辿る。table のセルに
+ * リンクが入っていることはあり、#7 で描けるようになった瞬間に未検査の URL が
+ * 出ていくのは避けたい。
+ */
+export function* walkArticleBlocks(
+  blocks: readonly ArticleBlock[],
+): Generator<ArticleBlock, void, undefined> {
+  for (const block of blocks) {
+    yield block;
+
+    switch (block.kind) {
+      case 'list':
+        for (const item of block.items) yield* walkArticleBlocks(item.children);
+        break;
+      case 'quote':
+      case 'callout':
+        yield* walkArticleBlocks(block.children);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/** rich text の配列とその持ち主（診断に出すため） */
+export type ArticleRichTextRef = { blockId: string; nodes: readonly ArticleRichText[] };
+
+/** 本文中のすべての rich text を、持ち主の ID 付きで集める */
+export function collectArticleRichText(document: ArticleDocument): ArticleRichTextRef[] {
+  const found: ArticleRichTextRef[] = [];
+
+  for (const block of walkArticleBlocks(document.blocks)) {
+    switch (block.kind) {
+      case 'paragraph':
+      case 'heading':
+      case 'quote':
+      case 'callout':
+        found.push({ blockId: block.id, nodes: block.richText });
+        break;
+      case 'code':
+      case 'image':
+        found.push({ blockId: block.id, nodes: block.caption });
+        break;
+      case 'list':
+        // 項目そのものは walkArticleBlocks が辿らない（子だけを辿る）ので、ここで拾う
+        for (const item of block.items) found.push({ blockId: item.id, nodes: item.richText });
+        break;
+      case 'table':
+        for (const row of block.rows) {
+          for (const cells of row.cells) found.push({ blockId: row.id, nodes: cells });
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  return found;
+}
+
+export type ArticleImageBlock = Extract<ArticleBlock, { kind: 'image' }>;
+
+/**
+ * rich text の見える文字列だけを取り出す。
+ *
+ * notion-normalize.ts の plainTextOf と同じ処理だが、あちらは Notion の正規化層に
+ * ある。描画モデルだけを使う側（alt の組み立てなど）が正規化層へ依存しないよう、
+ * モデル側にも置いておく。
+ */
+export function plainTextOfRichText(nodes: readonly ArticleRichText[]): string {
+  return nodes.map((node) => (node.kind === 'text' ? node.text : node.expression)).join('');
+}
+
+/** 本文中のすべての画像ブロックを集める（入れ子の中も含む） */
+export function collectArticleImages(document: ArticleDocument): ArticleImageBlock[] {
+  const found: ArticleImageBlock[] = [];
+  for (const block of walkArticleBlocks(document.blocks)) {
+    if (block.kind === 'image') found.push(block);
+  }
+  return found;
+}
+
+/**
+ * 画像ブロックだけを差し替えた新しい本文を返す。
+ *
+ * 元の木は変更しない。入れ子の位置と順序はそのまま保つ。
+ */
+export async function mapArticleImages(
+  document: ArticleDocument,
+  transform: (image: ArticleImageBlock) => Promise<ArticleImageBlock>,
+): Promise<ArticleDocument> {
+  return { blocks: await mapBlocks(document.blocks, transform) };
+}
+
+async function mapBlocks(
+  blocks: readonly ArticleBlock[],
+  transform: (image: ArticleImageBlock) => Promise<ArticleImageBlock>,
+): Promise<ArticleBlock[]> {
+  const out: ArticleBlock[] = [];
+
+  for (const block of blocks) {
+    switch (block.kind) {
+      case 'image':
+        out.push(await transform(block));
+        break;
+      case 'list':
+        out.push({
+          ...block,
+          items: await Promise.all(
+            block.items.map(async (item) => ({
+              ...item,
+              children: await mapBlocks(item.children, transform),
+            })),
+          ),
+        });
+        break;
+      case 'quote':
+      case 'callout':
+        out.push({ ...block, children: await mapBlocks(block.children, transform) });
+        break;
+      default:
+        out.push(block);
+        break;
+    }
+  }
+
+  return out;
 }
