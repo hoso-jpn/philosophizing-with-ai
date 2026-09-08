@@ -2,9 +2,9 @@
 import { getPosts } from '../../lib/notion';
 import type { Post } from '../../lib/types';
 import { getSlugFromTag } from '../../lib/tag-slugs';
-import { marked } from 'marked';
 import { assertArticleDocumentRenderable } from '../../lib/article-document';
 import ArticleContent from '../../components/article/ArticleContent.astro';
+import LegacyArticleContent from '../../components/article/LegacyArticleContent.astro';
 import BaseHead from '../../components/BaseHead.astro';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
@@ -39,8 +39,6 @@ if (source.kind === 'notion-page') {
   assertArticleDocumentRenderable(source.document, { slug: post.slug });
 }
 
-// legacy Content の描画。Phase 4 でフォーマット層に置き換える
-const legacyHtml = source.kind === 'legacy' ? marked(source.content) : null;
 const { title, tags, heroImage } = post;
 ---
 
@@ -66,21 +64,9 @@ const { title, tags, heroImage } = post;
         overflow-wrap: break-word;
       }
 
-      /* Notion本文の調整 */
-      .notion-content { 
-        line-height: 1.8; 
-        margin-top: 2rem; 
-        font-size: 1.05rem;
-        word-break: break-word; /* 本文の改行ルール */
-      }
-      
-      /* 本文内の画像やコードブロックがはみ出さないように */
-      .notion-content :global(img),
-      .notion-content :global(video),
-      .notion-content :global(pre) {
-        max-width: 100%;
-        height: auto;
-      }
+      /* .notion-content の見た目は LegacyArticleContent.astro が持つ。
+         div をあちらへ切り出した以上、style をここへ残しても scope が
+         一致せず 1 つも当たらない */
 
       .tags-container { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; }
       .tag-badge { background: var(--bg-card); padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; color: var(--green-bright); text-decoration: none; border: 1px solid var(--border); }
@@ -100,7 +86,6 @@ const { title, tags, heroImage } = post;
       @media (max-width: 600px) {
         h1 { font-size: 1.6rem; }
         main { padding: 0.8rem; }
-        .notion-content { font-size: 1rem; } /* スマホでは少し文字を小さくして読みやすく */
       }
     </style>
   </head>
@@ -126,7 +111,7 @@ const { title, tags, heroImage } = post;
 
         <hr />
         {source.kind === 'legacy' ? (
-          <div class="notion-content" set:html={legacyHtml}></div>
+          <LegacyArticleContent content={source.content} />
         ) : (
           <ArticleContent document={source.document} />
         )}

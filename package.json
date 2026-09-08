@@ -3,15 +3,17 @@
   "type": "module",
   "version": "0.0.1",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro check && astro build",
+    "build:fixture": "astro build --config tests/fixture/astro.config.mjs",
     "preview": "astro preview",
     "typecheck": "astro check",
     "test": "node --test 'src/**/*.test.ts'",
+    "test:fixture-output": "node scripts/assert-fixture-build.mjs",
     "astro": "astro"
   },
   "dependencies": {
