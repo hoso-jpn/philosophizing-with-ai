@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { saveImageLocally, type CacheIdentity } from './download-image.ts';
+import { safeUrlForLog } from './content-links.ts';
 import { collectArticleImages, mapArticleImages, plainTextOfRichText } from './article-document.ts';
 import type { ArticleDocument, ArticleImageBlock } from './article-document.ts';
 
@@ -155,16 +156,6 @@ async function localizeImageBlock(
   }
 
   return { ...image, source: { kind: 'local', src }, alt };
-}
-
-/** 署名やトークンをログへ出さない。取得元の把握には origin + pathname で足りる */
-function safeUrlForLog(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
-  } catch {
-    return '(URL として解釈できない値)';
-  }
 }
 
 /**

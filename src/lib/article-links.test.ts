@@ -215,6 +215,88 @@ describe('findArticleUrlViolations: 本文を漏れなく辿る', () => {
   });
 });
 
+describe('notion-hosted 画像の取得元は読者向け URL 規則の対象外（D-51）', () => {
+  const notionHosted = (url: string): ArticleDocument =>
+    doc([{
+      kind: 'image', id: 'fig1',
+      source: { kind: 'notion-hosted', url, expiryTime: null },
+      caption: [], alt: null,
+    }]);
+
+  // Notion は画像の実体を file.notion.so / www.notion.so/image で返すことがある。
+  // これは読者へ出すリンクではなく、build 時に取りに行くだけの一時 URL なので、
+  // 「Notion 内部のリンクです。相対リンクに直してください」は実行不可能な指示になる
+  it('file.notion.so の取得元を違反にしない', () => {
+    const url = 'https://file.notion.so/f/f/abc/def/fig.svg?table=block&signature=SIGSECRET';
+    assert.deepEqual(findArticleUrlViolations(notionHosted(url)), []);
+    assert.doesNotThrow(() => assertArticleUrlInvariants(notionHosted(url), { slug: 's' }));
+  });
+
+  it('www.notion.so/image の取得元を違反にしない', () => {
+    const url = 'https://www.notion.so/image/https%3A%2F%2Fx%2Ffig.svg?table=block&id=1&cache=v2';
+    assert.deepEqual(findArticleUrlViolations(notionHosted(url)), []);
+  });
+
+  it('S3 形式の取得元も従来どおり違反にしない', () => {
+    const url = 'https://prod-files-secure.s3.us-west-2.amazonaws.com/w/x/fig.svg?X-Amz-Signature=SIGSECRET';
+    assert.deepEqual(findArticleUrlViolations(notionHosted(url)), []);
+  });
+
+  // 読者が踏むリンクとしての notion URL は、これまでどおり弾く
+  it('rich text の notion.so リンクは従来どおり違反', () => {
+    const [violation] = findArticleUrlViolations(withLink('https://www.notion.so/some-page'));
+    assert.equal(violation.reason, 'self-host');
+    assert.equal(violation.origin, 'link');
+  });
+
+  it('external 画像の規則は弱めない', () => {
+    const external = (url: string): ArticleDocument =>
+      doc([{ kind: 'image', id: 'ex1', source: { kind: 'external', url }, caption: [], alt: null }]);
+
+    // 自サイト絶対 URL / authority-shorthand は引き続き違反
+    assert.equal(findArticleUrlViolations(external('https://blog.florigen.ai/images/a.png'))[0]?.reason, 'self-host');
+    assert.equal(findArticleUrlViolations(external('//evil.example.com/a.png'))[0]?.reason, 'authority-shorthand');
+    // 正当な外部画像は通す
+    assert.deepEqual(findArticleUrlViolations(external('https://images.example.com/a.png')), []);
+  });
+});
+
+describe('画像 URL の診断に署名・トークンを載せない', () => {
+  const SECRETS = ['SIGSECRET', 'CREDSECRET', 'TOKENSECRET'];
+  const signed =
+    'https://blog.florigen.ai/img/a.svg?X-Amz-Signature=SIGSECRET&Authorization=CREDSECRET&token=TOKENSECRET#frag';
+
+  const externalDoc = doc([
+    { kind: 'image', id: 'ex1', source: { kind: 'external', url: signed }, caption: [], alt: null },
+  ]);
+
+  it('violation の url が origin + pathname まで落ちている', () => {
+    const [violation] = findArticleUrlViolations(externalDoc);
+    assert.equal(violation.url, 'https://blog.florigen.ai/img/a.svg');
+    for (const secret of SECRETS) assert.doesNotMatch(violation.url, new RegExp(secret));
+  });
+
+  it('例外メッセージにも query / signature / token が出ない', () => {
+    assert.throws(
+      () => assertArticleUrlInvariants(externalDoc, { slug: 'canary' }),
+      (error: Error) => {
+        assert.ok(error instanceof ArticleUrlPolicyError);
+        for (const secret of SECRETS) assert.doesNotMatch(error.message, new RegExp(secret));
+        assert.doesNotMatch(error.message, /X-Amz-Signature=|Authorization=|token=|#frag|\?/);
+        // fail-closed 自体は維持する（記事とブロックは分かる）
+        assert.match(error.message, /canary/);
+        assert.match(error.message, /ex1/);
+        return true;
+      },
+    );
+  });
+
+  it('rich text のリンクは著者が直せるよう従来どおり全体を出す', () => {
+    const [violation] = findArticleUrlViolations(withLink('https://blog.florigen.ai/posts/x?a=1'));
+    assert.equal(violation.url, 'https://blog.florigen.ai/posts/x?a=1');
+  });
+});
+
 describe('assertArticleUrlInvariants', () => {
   it('違反があれば記事 slug 付きで落ちる', () => {
     assert.throws(

@@ -172,6 +172,71 @@ describe('normalizeBlocks: image / equation / table の意味情報を捨てな�
     );
   });
 
+  it('画像直後の斜体の図説明を caption へ昇格し、重複段落を残さない', async () => {
+    const nodes = await normalize([
+      block('image', {
+        type: 'file',
+        file: { url: 'https://s3.amazonaws.com/fig.svg', expiry_time: null },
+        caption: [],
+      }),
+      block('paragraph', {
+        rich_text: [annotated('図2. AMMI2バイプロット。', { italic: true })],
+      }),
+      paragraph('次の本文'),
+    ]);
+
+    assert.deepEqual(nodes.map((node) => node.kind), ['image', 'paragraph']);
+    const image = nodes[0] as Extract<ArticleBlock, { kind: 'image' }>;
+    assert.equal(plainTextOf(image.caption), '図2. AMMI2バイプロット。');
+    assert.equal(image.alt, '図2. AMMI2バイプロット。');
+    assert.equal(
+      plainTextOf((nodes[1] as Extract<ArticleBlock, { kind: 'paragraph' }>).richText),
+      '次の本文',
+    );
+  });
+
+  it('模式図と英語の Figure caption も昇格する', async () => {
+    for (const caption of ['模式図. G + GE の分解。', 'Figure 3: Which-Won-Where.']) {
+      const nodes = await normalize([
+        block('image', {
+          type: 'external', external: { url: 'https://example.com/fig.svg' }, caption: [],
+        }),
+        block('paragraph', {
+          rich_text: [annotated(caption, { italic: true })],
+        }),
+      ]);
+      assert.equal(nodes.length, 1);
+      assert.equal(plainTextOf((nodes[0] as Extract<ArticleBlock, { kind: 'image' }>).caption), caption);
+    }
+  });
+
+  it('既存 caption、通常段落、図ラベルの無い斜体段落は昇格しない', async () => {
+    const existing = await normalize([
+      block('image', {
+        type: 'external',
+        external: { url: 'https://example.com/with-caption.svg' },
+        caption: [text('既存 caption')],
+      }),
+      block('paragraph', {
+        rich_text: [annotated('図1. 直後の段落。', { italic: true })],
+      }),
+    ]);
+    assert.equal(existing.length, 2);
+    assert.equal(plainTextOf((existing[0] as Extract<ArticleBlock, { kind: 'image' }>).caption), '既存 caption');
+
+    const ordinary = await normalize([
+      block('image', {
+        type: 'external', external: { url: 'https://example.com/no-caption.svg' }, caption: [],
+      }),
+      paragraph('図1. 斜体ではない説明。'),
+      block('paragraph', {
+        rich_text: [annotated('強調した本文であり、図説明ではない。', { italic: true })],
+      }),
+    ]);
+    assert.deepEqual(ordinary.map((node) => node.kind), ['image', 'paragraph', 'paragraph']);
+    assert.equal((ordinary[0] as Extract<ArticleBlock, { kind: 'image' }>).caption.length, 0);
+  });
+
   it('equation: expression をそのまま持つ', async () => {
     const [node] = await normalize([block('equation', { expression: 'y_{ij} = \\mu + g_i + e_j' })]);
     const equation = node as Extract<ArticleBlock, { kind: 'equation' }>;

@@ -168,7 +168,7 @@ describe('parsePost: Content の必須性は本文 source によって変わる'
     );
   });
 
-  it('既定の判定では全記事が legacy 扱い（allowlist が空のため）', () => {
+  it('既定の判定でも canary 以外は legacy 扱い', () => {
     assert.throws(() => parsePost(page({ Content: rt('') })), NotionSchemaError);
   });
 });

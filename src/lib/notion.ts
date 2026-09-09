@@ -242,8 +242,8 @@ function assertMigrationAllowlistMatches(publishedSlugs: string[]): void {
  * なければならず、先に決めてしまうと `contentSource.content` だけ画像 URL が
  * 書き換わっていない、という食い違いが生まれる。
  *
- * migration allowlist が空のあいだ、ここは全記事について legacy を返すだけで、
- * Notion への追加の問い合わせも起きない。
+ * migration allowlist 外の記事は legacy を返すだけで、ページ本文への追加の問い合わせも
+ * 起きない。Issue #8 の段階では canary 1件だけがページ本文を取得する。
  */
 async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
   const resolved = await Promise.all(

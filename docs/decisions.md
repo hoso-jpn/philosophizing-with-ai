@@ -174,7 +174,7 @@ canary 期間中の切り替えは、版管理された `src/lib/migration-allow
 
 「ページ本文が空でなければページ本文を使う」だけにすると、legacy `Content` で公開中の記事のページ本文にたまたま何か書かれていた瞬間に本文が差し替わる。Notion のページには編集の副産物が残っていることがあるため、判定より前に明示的な一覧を通す。
 
-初期値は空。戻すときは slug を配列から消す。
+初期値は空。Issue #8 で最初の canary slug だけを追加する。戻すときは slug を配列から消す。
 
 ## D-35 — 取得の失敗を空本文として扱わない
 
@@ -336,3 +336,35 @@ KaTeX は `throwOnError: true` / `strict: error` / `trust: false` とする。�
 Notion table の `has_column_header` / `has_row_header` は見た目だけでなく、`thead` / `tbody` と `th scope="col"` / `th scope="row"` へ写す。表全体はキーボードでフォーカスできる横スクロール領域へ入れる。セル内の rich text は段落と同じ renderer を使うので、リンク・装飾・インライン数式の意味を保つ。
 
 code block は `pre > code`、inline code は `code` のまま分離する。Notion の language は表示値を `data-language` に保持し、CSS class に使う値は英数字・ハイフン・アンダースコアへ正規化する。
+
+## D-51 — `notion-hosted` 画像の取得元 URL は読者向け URL 規則の対象外にする
+
+`findUrlPolicyViolation` は「読者が踏むリンクの正規形」を見る規則で、自サイトや Notion 内部を指す絶対 URL を「相対パスへ直せ」と言う（D-13）。この規則を **画像の取得元 URL** にも当てていたのが誤りだった。
+
+`notion-hosted` の URL は読者へ出すリンクではない。Notion の API が返す**ビルド時に取りに行くためだけの一時 URL**で、取得後は必ず `/notion-static/<hash>.<ext>` へ差し替わる。Notion は画像の実体を `file.notion.so` や `www.notion.so/image/...` で返すことがあり、そこへこの規則を当てると
+
+```
+Notion 内部のリンクです。Notion 側で /posts/<slug> の相対リンクに直してください
+```
+
+という、画像に対して実行不可能な指示でビルドが落ちる。カテゴリ違いなので対象から外す。
+
+外しても安全性は下がらない。取得元 URL が読者に届かないことは別の 3 つの契約が担保している。
+
+- 生成物に remote URL を残さない … `assertNoRemoteArticleImages`（事後条件）と `assert-no-remote-images-in-output`（出力の実検査）
+- http(s) 以外を素通ししない … `article-media.ts` がローカルパス以外を弾く
+- 取得の失敗を握り潰さない … `saveImageLocally` が例外を投げる
+
+`external` 画像は著者が本文へ書いた URL なので、従来どおり規則を当てる。rich text のリンクも変えない。
+
+**画像 URL を診断へ載せるときは `origin + pathname` まで落とす。** Notion の署名付き URL は `X-Amz-Signature` / `X-Amz-Credential` / `X-Amz-Security-Token` を、外部の画像配信も `token=` や `Authorization=` をクエリに持つ。生の URL を診断へ書くと、ビルドログという公開されうる場所へそれが流れる。どこから取ろうとしたかは origin + pathname で十分に分かる。sanitize 関数は `content-links.ts` に置き（URL の規則は 1 か所・D-19）、`article-media.ts` と `article-links.ts` の双方から使う。
+
+rich text のリンクは著者が本文で直す対象なので、診断には URL 全体を出す。
+
+## D-52 — 画像直後の明示的な図説明を semantic caption へ昇格する
+
+AIと統計学03の6図は、画像ブロック自身の caption ではなく、直後の斜体段落に図説明が書かれていた。このまま通常段落として描くと `<figcaption>` にならず、caption も SVG `<title>` も無い図では代替テキストを決められない。一方、説明文そのものはページ本文に存在し、本文を正本とする契約は満たしている。
+
+そこで、画像自身の caption が空で、直後がすべて斜体の text 断片からなり、かつ「図1.」「模式図.」「Figure 1:」等の明示的な図ラベルで始まる場合だけ、その段落を画像 caption へ昇格する。昇格した段落は本文から除き、figure caption と通常段落の二重表示を避ける。
+
+任意の斜体段落は吸収しない。既に caption がある画像、斜体でない段落、図ラベルの無い斜体段落は従来どおり保持する。これによりNotion上の既存の意味を保ったまま、`<figure>` / `<img alt>` / `<figcaption>` の意味構造へ変換する。
