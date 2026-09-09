@@ -90,6 +90,77 @@ describe('getSeriesNavigation', () => {
     assert.equal(navigation?.next?.slug, 'appendix-a');
   });
 
+  // 現行データでは 4 シリーズ中 2 つが 1 記事だけ。ここで prev/next が
+  // 出ると、記事末尾に行き先の無い nav が並ぶ
+  it('1 記事だけのシリーズは prev も next も持たない', () => {
+    const solo = [{ slug: 'only', title: 'AIと実装01；A', titlePrefix: 'AIと実装01', date: '2026-01-01' }];
+    const navigation = getSeriesNavigation(solo[0], solo);
+    assert.equal(navigation?.seriesName, 'AIと実装');
+    assert.equal(navigation?.previous, null);
+    assert.equal(navigation?.next, null);
+  });
+
+  it('別シリーズへ越境しない', () => {
+    // **別シリーズの連番を意図的に食い違わせる。** 端どうしを並べただけの
+    // データだと、シリーズの絞り込みを丸ごと外しても偶然 prev/next が
+    // 変わらず、この test が退行を検出できない（実測）。
+    // 哲学01 が統計学01と同じ番号・その間の日付を持つので、絞り込みが外れると
+    // 統計学01 の next が哲学01 になる。
+    const mixed = [
+      { slug: 'st-1', title: 'AIと統計学01；A', titlePrefix: 'AIと統計学01', date: '2026-01-01' },
+      { slug: 'st-2', title: 'AIと統計学02；B', titlePrefix: 'AIと統計学02', date: '2026-01-09' },
+      { slug: 'ph-1', title: 'AIと哲学01；X', titlePrefix: 'AIと哲学01', date: '2026-01-05' },
+      { slug: 'ph-2', title: 'AIと哲学02；Y', titlePrefix: 'AIと哲学02', date: '2026-01-07' },
+    ];
+    const navigationOf = (slug: string) =>
+      getSeriesNavigation(mixed.find((post) => post.slug === slug)!, mixed);
+
+    // 同じ番号・間の日付を持つ別シリーズが隣に来ない
+    assert.equal(navigationOf('st-1')?.next?.slug, 'st-2');
+    assert.equal(navigationOf('st-2')?.previous?.slug, 'st-1');
+    assert.equal(navigationOf('ph-1')?.next?.slug, 'ph-2');
+    assert.equal(navigationOf('ph-2')?.previous?.slug, 'ph-1');
+    // 各シリーズの端は、もう一方のシリーズへ繋がらない
+    assert.equal(navigationOf('st-1')?.previous, null);
+    assert.equal(navigationOf('st-2')?.next, null);
+    assert.equal(navigationOf('ph-1')?.previous, null);
+    assert.equal(navigationOf('ph-2')?.next, null);
+    // 自分自身を prev/next にしない
+    for (const post of mixed) {
+      const navigation = getSeriesNavigation(post, mixed);
+      assert.notEqual(navigation?.previous?.slug, post.slug);
+      assert.notEqual(navigation?.next?.slug, post.slug);
+    }
+  });
+
+  it('連番が重複しても順序が決まり、入力順に依存しない', () => {
+    const duplicated = [
+      { slug: 'b', title: 'AIと統計学01；B', titlePrefix: 'AIと統計学01', date: '2026-01-02' },
+      { slug: 'a', title: 'AIと統計学01；A', titlePrefix: 'AIと統計学01', date: '2026-01-01' },
+      { slug: 'c', title: 'AIと統計学02；C', titlePrefix: 'AIと統計学02', date: '2026-01-03' },
+    ];
+    const chain = (input: typeof duplicated) => {
+      const head = input.find((post) => getSeriesNavigation(post, input)?.previous === null);
+      const order: string[] = [];
+      let current = head ?? null;
+      while (current) {
+        order.push(current.slug);
+        const next = getSeriesNavigation(current, input)?.next ?? null;
+        current = next ? input.find((post) => post.slug === next.slug) ?? null : null;
+      }
+      return order.join(',');
+    };
+    assert.equal(chain(duplicated), 'a,b,c');
+    assert.equal(chain([...duplicated].reverse()), 'a,b,c');
+  });
+
+  it('渡された posts 配列を並べ替えない', () => {
+    const input = [...posts];
+    const before = input.map((post) => post.slug).join(',');
+    getSeriesNavigation(input[0], input);
+    assert.equal(input.map((post) => post.slug).join(','), before);
+  });
+
   it('未知シリーズにも適用し、非シリーズ記事には表示しない', () => {
     const unknown = [
       { slug: 'music-1', title: 'AIと音楽01；A', titlePrefix: 'AIと音楽01' },

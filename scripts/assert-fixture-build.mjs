@@ -74,6 +74,20 @@ assert.match(html, /id="comments-fixture"/, 'コメント欄用 slot が描画�
 assert.match(html, /<nav class="series-navigation" aria-label="AIと統計学シリーズ内の記事"/, 'series navigation が semantic でありません');
 assert.match(html, /href="\/posts\/statistics-02"/, 'prev の slug URL がありません');
 assert.match(html, /href="\/posts\/statistics-04"/, 'next の slug URL がありません');
+// 前後の「向き」と記事名の両方がリンクの読み上げ名に入ること。向きが視覚だけに
+// 出ていると、支援技術では 2 つのリンクの区別が付かない
+assert.match(
+  html,
+  /--previous"[^>]*>\s*<span class="series-navigation__direction"[^>]*>← 前の記事<\/span>\s*<span class="series-navigation__title"[^>]*>AIと統計学02；前の記事<\/span>/,
+  'prev リンクに向きと記事名が揃っていません',
+);
+assert.match(
+  html,
+  /--next"[^>]*>\s*<span class="series-navigation__direction"[^>]*>次の記事 →<\/span>\s*<span class="series-navigation__title"[^>]*>AIと統計学04；次の記事<\/span>/,
+  'next リンクに向きと記事名が揃っていません',
+);
+// 空の href / 中身の無いリンクを出さない
+assert.doesNotMatch(html, /<a[^>]*class="series-navigation__link[^"]*"[^>]*href=""/, '空 href のリンクがあります');
 assert.doesNotMatch(html, /amazonaws\.com|philosophizing-with-ai\.com/, '禁止ホストが残っています');
 
 // KaTeX の視覚層は支援技術から隠し、MathML だけを読ませる
@@ -88,6 +102,13 @@ assert.doesNotMatch(html, /<tbody[^>]*>\s*<\/tbody>/, '中身の無い tbody が
 // **見た目が本当に当たるか。** 文字列一致だけでは、div を子コンポーネントへ
 // 切り出して style を親に残した場合の退行（生成 HTML から scope 属性が消え、
 // CSS が 1 つも当たらない）を検出できない
+// シリーズ navigation を持たない記事に、中身の無い記事後 footer を出さない。
+// 出ると border-top の線と上下 5rem の余白だけが記事末尾に残る
+const noSeriesHtml = await readFile(new URL('no-series/index.html', distRoot), 'utf-8');
+assert.doesNotMatch(noSeriesHtml, /article-footer/, 'nav の無い記事に空の記事後 footer が出ています');
+assert.doesNotMatch(noSeriesHtml, /series-navigation/, 'nav の無い記事に series navigation が出ています');
+assert.match(noSeriesHtml, /<div class="notion-content"/, 'nav の無い記事の本文が描画されていません');
+
 const css = await emittedCss();
 assertScopedStyleApplies(css, 'notion-content', 'line-height:1\\.8');
 // インライン数式は自前の scroll container を持たない。shell 側で幅を止めないと

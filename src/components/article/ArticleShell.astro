@@ -14,7 +14,23 @@ interface Props {
 }
 
 const props = Astro.props as Props;
-const hasAfterContent = Astro.slots.has('after-content');
+
+/**
+ * 記事後 slot は **描画結果で** 判定する。
+ *
+ * `Astro.slots.has('after-content')` は slot 名がテンプレートに書かれていれば
+ * true を返す。`{cond && <Fragment slot="after-content">…</Fragment>}` のように
+ * 条件付きで渡す呼び出し側では、cond が false でも true になる（実測）。
+ * これを信じると、中身が無いのに `<footer class="article-footer">` だけが出て、
+ * border-top と上下 5rem の余白が記事末尾に線として残る。
+ *
+ * 描画済みの文字列を見れば「本当に中身があるか」で判定できる。set:html へ渡す
+ * のは Astro が描画した slot の出力そのもので、外部入力ではない。
+ */
+const afterContent = Astro.slots.has('after-content')
+  ? await Astro.slots.render('after-content')
+  : '';
+const hasAfterContent = afterContent.trim() !== '';
 ---
 <html lang="ja">
   <head><BaseHead title={props.title} description={props.description} /></head>
@@ -31,7 +47,7 @@ const hasAfterContent = Astro.slots.has('after-content');
         />
         <hr />
         <div class="article-body"><slot /></div>
-        {hasAfterContent && <footer class="article-footer"><slot name="after-content" /></footer>}
+        {hasAfterContent && <footer class="article-footer" set:html={afterContent} />}
       </article>
     </main>
     <Footer />
