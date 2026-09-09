@@ -1,0 +1,48 @@
+---
+/**
+ * legacy `Content` プロパティの本文。
+ *
+ * marked の出力を `set:html` で入れる従来どおりの経路。ページ本文（ArticleContent）
+ * と違い、ここは HTML 文字列なので Astro の自動エスケープには載らない。
+ *
+ * **本文の見た目もこのコンポーネントが持つ。** Astro の scoped style は
+ * 「その .astro ファイルの template に書かれた要素」にしか scope 属性を付けない。
+ * div をここへ切り出したのに style を [slug].astro へ残すと、生成 HTML は
+ * `<div class="notion-content">`（scope 属性なし）、CSS は
+ * `.notion-content[data-astro-cid-…]` となり、**1 つも当たらなくなる**（実測）。
+ * 特に img / video / pre の `max-width: 100%` が外れると、既存記事の画像と
+ * コードブロックが横にはみ出す。
+ */
+import { marked } from 'marked';
+
+interface Props {
+  content: string;
+}
+
+const { content } = Astro.props as Props;
+const html = marked(content);
+---
+<div class="notion-content" set:html={html}></div>
+
+<style>
+  /* Notion本文の調整 */
+  .notion-content {
+    line-height: 1.8;
+    margin-top: 2rem;
+    font-size: 1.05rem;
+    word-break: break-word; /* 本文の改行ルール */
+  }
+
+  /* 本文内の画像やコードブロックがはみ出さないように。
+     marked の出力は set:html で入るため scope 属性を持たない。:global で当てる */
+  .notion-content :global(img),
+  .notion-content :global(video),
+  .notion-content :global(pre) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  @media (max-width: 600px) {
+    .notion-content { font-size: 1rem; } /* スマホでは少し文字を小さくして読みやすく */
+  }
+</style>

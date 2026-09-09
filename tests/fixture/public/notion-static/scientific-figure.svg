@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" role="img">
+  <title>科学記事 fixture 図</title>
+  <rect width="320" height="120" fill="#fbfdfb"/>
+  <path d="M20 95 L85 42 L150 70 L215 25 L300 55" fill="none" stroke="#22543d" stroke-width="4"/>
+</svg>

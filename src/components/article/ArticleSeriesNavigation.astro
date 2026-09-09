@@ -1,0 +1,56 @@
+---
+import { articlePath } from '../../lib/site-urls';
+
+type LinkPost = { slug: string; title: string };
+
+interface Props {
+  seriesName: string;
+  previous: LinkPost | null;
+  next: LinkPost | null;
+}
+
+const { seriesName, previous, next } = Astro.props as Props;
+---
+<nav class="series-navigation" aria-label={`${seriesName}シリーズ内の記事`}>
+  {previous ? (
+    <a class="series-navigation__link series-navigation__link--previous" href={articlePath(previous.slug)}>
+      <span class="series-navigation__direction">← 前の記事</span>
+      <span class="series-navigation__title">{previous.title}</span>
+    </a>
+  ) : <span aria-hidden="true"></span>}
+  {next && (
+    <a class="series-navigation__link series-navigation__link--next" href={articlePath(next.slug)}>
+      <span class="series-navigation__direction">次の記事 →</span>
+      <span class="series-navigation__title">{next.title}</span>
+    </a>
+  )}
+</nav>
+
+<style>
+  .series-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .series-navigation__link {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    text-decoration: none;
+  }
+  .series-navigation__link:hover,
+  .series-navigation__link:focus-visible { border-color: var(--green); }
+  .series-navigation__link--next { text-align: right; }
+  .series-navigation__direction {
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+  }
+  .series-navigation__title { color: var(--green-bright); font-size: 0.9rem; overflow-wrap: anywhere; }
+  @media (max-width: 600px) {
+    .series-navigation { grid-template-columns: 1fr; }
+    .series-navigation > span { display: none; }
+    .series-navigation__link--next { text-align: left; }
+  }
+</style>

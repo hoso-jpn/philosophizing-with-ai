@@ -34,7 +34,7 @@ const SEPARATOR = /[；;：:]/;
  * ラベル末尾を非数字に限定することで、"2026年の記録" のような
  * 数字で終わる通常タイトルを誤判定しない。
  */
-const SERIES_LABEL = /^([^0-9０-９](?:[^；;：:]*[^0-9０-９\s])?)[\s]*[0-9０-９]{1,3}$/;
+const SERIES_LABEL = /^([^0-9０-９](?:[^；;：:]*[^0-9０-９\s])?)[\s]*([0-9０-９]{1,3})$/;
 
 /** シリーズ名として許容する最大長（通常の文章が誤判定されるのを防ぐ保険） */
 const MAX_SERIES_NAME_LENGTH = 32;
@@ -49,6 +49,20 @@ export function parseSeriesLabel(label: string | null | undefined): string | nul
   return name;
 }
 
+const FULL_WIDTH_ZERO = '０'.codePointAt(0)!;
+
+function parseSeriesSequence(label: string | null | undefined): { name: string; number: number } | null {
+  if (!label) return null;
+  const matched = label.trim().match(SERIES_LABEL);
+  if (!matched) return null;
+  const name = matched[1].trim();
+  if (!name || name.length > MAX_SERIES_NAME_LENGTH) return null;
+  const asciiDigits = [...matched[2]]
+    .map((digit) => /[０-９]/.test(digit) ? String(digit.codePointAt(0)! - FULL_WIDTH_ZERO) : digit)
+    .join('');
+  return { name, number: Number(asciiDigits) };
+}
+
 /** "AIと実装01；本文…" のような表示用タイトルからシリーズ名を取り出す。 */
 export function parseSeriesFromTitle(title: string | null | undefined): string | null {
   if (!title || !SEPARATOR.test(title)) return null;
@@ -60,6 +74,63 @@ export function getSeriesName(post: SeriesSourcePost): string | null {
   const explicit = post.series?.trim();
   if (explicit) return explicit;
   return parseSeriesLabel(post.titlePrefix) ?? parseSeriesFromTitle(post.title);
+}
+
+/** 明示されたシリーズ名と一致するラベルから連番を読む。 */
+export function getSeriesNumber(post: SeriesSourcePost): number | null {
+  const seriesName = getSeriesName(post);
+  if (!seriesName) return null;
+
+  const labels = [post.titlePrefix, post.title?.split(SEPARATOR)[0]];
+  for (const label of labels) {
+    const parsed = parseSeriesSequence(label);
+    if (parsed?.name === seriesName) return parsed.number;
+  }
+  return null;
+}
+
+export type SeriesNavigationSourcePost = SeriesSourcePost & {
+  slug: string;
+  date?: string | null;
+};
+
+export type SeriesNavigation<T extends SeriesNavigationSourcePost> = {
+  seriesName: string;
+  previous: T | null;
+  next: T | null;
+};
+
+function compareSeriesPosts<T extends SeriesNavigationSourcePost>(left: T, right: T): number {
+  const leftNumber = getSeriesNumber(left);
+  const rightNumber = getSeriesNumber(right);
+
+  if (leftNumber !== null && rightNumber !== null && leftNumber !== rightNumber) return leftNumber - rightNumber;
+  if (leftNumber !== null && rightNumber === null) return -1;
+  if (leftNumber === null && rightNumber !== null) return 1;
+
+  const byDate = (left.date ?? '').localeCompare(right.date ?? '');
+  if (byDate !== 0) return byDate;
+  const byTitle = (left.title ?? '').localeCompare(right.title ?? '', 'ja');
+  return byTitle !== 0 ? byTitle : left.slug.localeCompare(right.slug);
+}
+
+/** 現在記事と同じシリーズだけを、連番優先で並べた前後記事。 */
+export function getSeriesNavigation<T extends SeriesNavigationSourcePost>(
+  current: T,
+  posts: readonly T[],
+): SeriesNavigation<T> | null {
+  const seriesName = getSeriesName(current);
+  if (!seriesName) return null;
+
+  const ordered = posts.filter((post) => getSeriesName(post) === seriesName).sort(compareSeriesPosts);
+  const index = ordered.findIndex((post) => post.slug === current.slug);
+  if (index === -1) return null;
+
+  return {
+    seriesName,
+    previous: ordered[index - 1] ?? null,
+    next: ordered[index + 1] ?? null,
+  };
 }
 
 /**

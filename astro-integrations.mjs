@@ -1,9 +1,10 @@
-import { access, cp, readdir, stat } from 'node:fs/promises';
+import { cp, readdir, stat } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { assertNoSelfReferencingUrls } from './src/lib/content-links.ts';
+import { findForbiddenRemoteImages, findMissingLocalImages } from './src/lib/build-artifacts.ts';
 
 /**
  * ビルド中にダウンロードした Notion の画像を出力へ入れる。
@@ -53,36 +54,13 @@ export function copyDownloadedImages() {
  * download-image.ts がローカル化しているはずだが、それが壊れてもビルドは成功して
  * しまう（HTML は生成される）。出力を直接見て、機械的に止める。
  */
-const FORBIDDEN_IMAGE_HOSTS = [
-  'amazonaws.com', // Notion の署名付き S3 URL
-  'philosophizing-with-ai.com', // 停止済みの旧ドメイン
-];
-
-async function listHtmlFiles(root) {
-  const found = [];
-  for (const entry of await readdir(root, { withFileTypes: true, recursive: true })) {
-    if (entry.isFile() && entry.name.endsWith('.html')) found.push(path.join(entry.parentPath, entry.name));
-  }
-  return found;
-}
-
 export function assertNoRemoteImagesInOutput() {
   return {
     name: 'assert-no-remote-images-in-output',
     hooks: {
       'astro:build:done': async ({ dir, logger }) => {
         const root = fileURLToPath(dir);
-        const offenders = [];
-
-        for (const file of await listHtmlFiles(root)) {
-          const html = await readFile(file, 'utf-8');
-          for (const match of html.matchAll(/<img\b[^>]*?\bsrc=["'](https?:\/\/[^"']+)["']/gi)) {
-            const host = new URL(match[1]).hostname;
-            if (FORBIDDEN_IMAGE_HOSTS.some((bad) => host === bad || host.endsWith(`.${bad}`))) {
-              offenders.push(`${path.relative(root, file)}: ${match[1].split('?')[0]}`);
-            }
-          }
-        }
+        const offenders = await findForbiddenRemoteImages(root);
 
         if (offenders.length > 0) {
           throw new Error(
@@ -149,61 +127,12 @@ export function assertTemplateUrls() {
  * astro.config.mjs の integrations の並び順がそのまま実行順になる。
  */
 export function assertLocalImagesExist() {
-  /** 出力に実体を持たない仮想パス。ここに該当するものは検査対象外 */
-  const IGNORED_PREFIXES = ['/_image', '/@'];
-
   return {
     name: 'assert-local-images-exist',
     hooks: {
       'astro:build:done': async ({ dir, logger }) => {
         const root = fileURLToPath(dir);
-        const rootResolved = path.resolve(root);
-        const offenders = [];
-        const checked = new Set();
-
-        for (const file of await listHtmlFiles(root)) {
-          const html = await readFile(file, 'utf-8');
-
-          for (const match of html.matchAll(/<img\b[^>]*?\bsrc=["']([^"']+)["']/gi)) {
-            const src = match[1];
-            // サイト内の絶対パスだけを見る。外部 URL は別の検査が担当し、
-            // 相対パスは記事本文では使っていない
-            if (!src.startsWith('/') || src.startsWith('//')) continue;
-            if (IGNORED_PREFIXES.some((prefix) => src.startsWith(prefix))) continue;
-
-            // クエリとフラグメントを落とし、%E3%81%82 のような表記を実ファイル名へ戻す。
-            // 壊れた percent 表記は URIError になる。素の例外で落ちると原因の
-            // 分からないビルド失敗になるので、この検査の違反として扱う
-            let pathname;
-            try {
-              pathname = decodeURIComponent(src.split(/[?#]/)[0]);
-            } catch {
-              offenders.push(`${path.relative(root, file)}: ${src}（URL の % 表記が壊れています）`);
-              continue;
-            }
-
-            const key = `${path.relative(root, file)}\u0000${pathname}`;
-            if (checked.has(key)) continue;
-            checked.add(key);
-
-            // 出力ディレクトリの外を指していないか。
-            //
-            // `/notion-static/../../../../etc/hosts` は path.join で `/etc/hosts` に
-            // なり、実在するので access() が通ってしまう。存在検査が
-            // **通ってはいけない入力で通る**のは、検査として意味を失う（fail open）。
-            const target = path.resolve(rootResolved, `.${pathname}`);
-            if (target !== rootResolved && !target.startsWith(rootResolved + path.sep)) {
-              offenders.push(`${path.relative(root, file)}: ${pathname}（出力ディレクトリの外を指しています）`);
-              continue;
-            }
-
-            try {
-              await access(target);
-            } catch {
-              offenders.push(`${path.relative(root, file)}: ${pathname}`);
-            }
-          }
-        }
+        const { offenders, checkedCount } = await findMissingLocalImages(root);
 
         if (offenders.length > 0) {
           throw new Error(
@@ -214,7 +143,7 @@ export function assertLocalImagesExist() {
               'src/lib/download-image.ts のローカル化を確認してください。',
           );
         }
-        logger.info(`生成 HTML のサイト内画像 ${checked.size} 件はすべて出力に存在`);
+        logger.info(`生成 HTML のサイト内画像 ${checkedCount} 件はすべて出力に存在`);
       },
     },
   };

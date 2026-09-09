@@ -1,0 +1,22 @@
+---
+/**
+ * シリーズ navigation を持たない記事。
+ *
+ * `[slug].astro` は `{navigation && (...) && <Fragment slot="after-content">…}`
+ * という形で slot を条件付きで渡す。この形だと Astro.slots.has は cond が false
+ * でも true を返すため、中身の無い `<footer class="article-footer">` だけが出て
+ * 記事末尾に border-top の線と余白が残っていた（実測）。その形をここで固定する。
+ */
+import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
+import LegacyArticleContent from '../../../../src/components/article/LegacyArticleContent.astro';
+
+export const prerender = true;
+
+const navigation: { previous: unknown; next: unknown } | null = { previous: null, next: null };
+---
+<ArticleShell title="単発記事" description="シリーズに属さない記事" pubDate="2026-09-08">
+  <LegacyArticleContent content={'## 単発\n\n本文。'} />
+  {navigation && (navigation.previous || navigation.next) && (
+    <Fragment slot="after-content"><p>出てはいけない</p></Fragment>
+  )}
+</ArticleShell>

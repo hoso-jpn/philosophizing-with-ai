@@ -1,0 +1,79 @@
+---
+import ArticleContent from '../../../../src/components/article/ArticleContent.astro';
+import LegacyArticleContent from '../../../../src/components/article/LegacyArticleContent.astro';
+import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
+import ArticleSeriesNavigation from '../../../../src/components/article/ArticleSeriesNavigation.astro';
+import type { ArticleDocument, ArticleRichText } from '../../../../src/lib/article-document';
+
+export const prerender = true;
+
+const text = (value: string): ArticleRichText => ({
+  kind: 'text',
+  text: value,
+  bold: false,
+  italic: false,
+  strikethrough: false,
+  underline: false,
+  code: false,
+  href: null,
+});
+
+const figures: ArticleDocument['blocks'] = Array.from({ length: 6 }, (_, index) => ({
+  kind: 'image' as const,
+  id: `figure-${index + 1}`,
+  source: { kind: 'local' as const, src: '/notion-static/scientific-figure.svg' },
+  caption: [text(`科学図 ${index + 1}`)],
+  alt: `科学図 ${index + 1}`,
+}));
+
+const document: ArticleDocument = {
+  blocks: [
+    {
+      kind: 'paragraph',
+      id: 'paragraph-1',
+      richText: [text('インライン数式 '), { kind: 'equation', expression: 'x^2 + y^2' }],
+    },
+    {
+      kind: 'equation',
+      id: 'equation-1',
+      expression: 'y_{ij} = \\mu + a_i + b_j + e_{ij}',
+    },
+    {
+      kind: 'table',
+      id: 'table-1',
+      hasColumnHeader: true,
+      hasRowHeader: true,
+      rows: [
+        { id: 'row-head', cells: [[text('手法')], [text('式')]] },
+        { id: 'row-body', cells: [[text('AMMI')], [{ kind: 'equation', expression: '\\lambda_k' }]] },
+      ],
+    },
+    {
+      kind: 'code',
+      id: 'code-1',
+      code: 'print("fixture")',
+      language: 'Python',
+      caption: [text('再現コード')],
+    },
+    ...figures,
+  ],
+};
+---
+<ArticleShell
+  title="AIと統計学03；Renderer fixture"
+  description="共通 article shell の fixture"
+  pubDate="2026-09-08"
+  seriesName="AIと統計学"
+  tags={['統計学']}
+>
+  <ArticleContent document={document} />
+  <LegacyArticleContent content={'## Legacy fixture\n\n既存の **太字** と [内部リンク](/about) を維持する。'} />
+  <Fragment slot="after-content">
+    <ArticleSeriesNavigation
+      seriesName="AIと統計学"
+      previous={{ slug: 'statistics-02', title: 'AIと統計学02；前の記事' }}
+      next={{ slug: 'statistics-04', title: 'AIと統計学04；次の記事' }}
+    />
+    <section id="comments-fixture"><h2>コメント</h2></section>
+  </Fragment>
+</ArticleShell>
