@@ -101,14 +101,30 @@ describe('getSeriesNavigation', () => {
   });
 
   it('別シリーズへ越境しない', () => {
+    // **別シリーズの連番を意図的に食い違わせる。** 端どうしを並べただけの
+    // データだと、シリーズの絞り込みを丸ごと外しても偶然 prev/next が
+    // 変わらず、この test が退行を検出できない（実測）。
+    // 哲学01 が統計学01と同じ番号・その間の日付を持つので、絞り込みが外れると
+    // 統計学01 の next が哲学01 になる。
     const mixed = [
-      ...posts,
-      { slug: 'ph-1', title: 'AIと哲学01；X', titlePrefix: 'AIと哲学01', date: '2026-01-15' },
-      { slug: 'ph-2', title: 'AIと哲学02；Y', titlePrefix: 'AIと哲学02', date: '2026-02-15' },
+      { slug: 'st-1', title: 'AIと統計学01；A', titlePrefix: 'AIと統計学01', date: '2026-01-01' },
+      { slug: 'st-2', title: 'AIと統計学02；B', titlePrefix: 'AIと統計学02', date: '2026-01-09' },
+      { slug: 'ph-1', title: 'AIと哲学01；X', titlePrefix: 'AIと哲学01', date: '2026-01-05' },
+      { slug: 'ph-2', title: 'AIと哲学02；Y', titlePrefix: 'AIと哲学02', date: '2026-01-07' },
     ];
-    // 統計学の末尾は哲学の先頭へ繋がらない
-    assert.equal(getSeriesNavigation(mixed[0], mixed)?.next, null);
-    assert.equal(getSeriesNavigation(mixed[3], mixed)?.previous, null);
+    const navigationOf = (slug: string) =>
+      getSeriesNavigation(mixed.find((post) => post.slug === slug)!, mixed);
+
+    // 同じ番号・間の日付を持つ別シリーズが隣に来ない
+    assert.equal(navigationOf('st-1')?.next?.slug, 'st-2');
+    assert.equal(navigationOf('st-2')?.previous?.slug, 'st-1');
+    assert.equal(navigationOf('ph-1')?.next?.slug, 'ph-2');
+    assert.equal(navigationOf('ph-2')?.previous?.slug, 'ph-1');
+    // 各シリーズの端は、もう一方のシリーズへ繋がらない
+    assert.equal(navigationOf('st-1')?.previous, null);
+    assert.equal(navigationOf('st-2')?.next, null);
+    assert.equal(navigationOf('ph-1')?.previous, null);
+    assert.equal(navigationOf('ph-2')?.next, null);
     // 自分自身を prev/next にしない
     for (const post of mixed) {
       const navigation = getSeriesNavigation(post, mixed);
