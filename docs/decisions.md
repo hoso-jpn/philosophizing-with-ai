@@ -174,7 +174,7 @@ canary 期間中の切り替えは、版管理された `src/lib/migration-allow
 
 「ページ本文が空でなければページ本文を使う」だけにすると、legacy `Content` で公開中の記事のページ本文にたまたま何か書かれていた瞬間に本文が差し替わる。Notion のページには編集の副産物が残っていることがあるため、判定より前に明示的な一覧を通す。
 
-初期値は空。戻すときは slug を配列から消す。
+初期値は空。Issue #8 で最初の canary slug だけを追加する。戻すときは slug を配列から消す。
 
 ## D-35 — 取得の失敗を空本文として扱わない
 
@@ -360,3 +360,11 @@ Notion 内部のリンクです。Notion 側で /posts/<slug> の相対リンク
 **画像 URL を診断へ載せるときは `origin + pathname` まで落とす。** Notion の署名付き URL は `X-Amz-Signature` / `X-Amz-Credential` / `X-Amz-Security-Token` を、外部の画像配信も `token=` や `Authorization=` をクエリに持つ。生の URL を診断へ書くと、ビルドログという公開されうる場所へそれが流れる。どこから取ろうとしたかは origin + pathname で十分に分かる。sanitize 関数は `content-links.ts` に置き（URL の規則は 1 か所・D-19）、`article-media.ts` と `article-links.ts` の双方から使う。
 
 rich text のリンクは著者が本文で直す対象なので、診断には URL 全体を出す。
+
+## D-52 — 画像直後の明示的な図説明を semantic caption へ昇格する
+
+AIと統計学03の6図は、画像ブロック自身の caption ではなく、直後の斜体段落に図説明が書かれていた。このまま通常段落として描くと `<figcaption>` にならず、caption も SVG `<title>` も無い図では代替テキストを決められない。一方、説明文そのものはページ本文に存在し、本文を正本とする契約は満たしている。
+
+そこで、画像自身の caption が空で、直後がすべて斜体の text 断片からなり、かつ「図1.」「模式図.」「Figure 1:」等の明示的な図ラベルで始まる場合だけ、その段落を画像 caption へ昇格する。昇格した段落は本文から除き、figure caption と通常段落の二重表示を避ける。
+
+任意の斜体段落は吸収しない。既に caption がある画像、斜体でない段落、図ラベルの無い斜体段落は従来どおり保持する。これによりNotion上の既存の意味を保ったまま、`<figure>` / `<img alt>` / `<figcaption>` の意味構造へ変換する。

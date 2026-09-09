@@ -19,7 +19,9 @@
  *
  * 戻すときはこの配列から slug を消すだけでよい。
  */
-export const PAGE_BODY_MIGRATED_SLUGS: readonly string[] = [];
+export const PAGE_BODY_MIGRATED_SLUGS: readonly string[] = [
+  'allrounder-or-master-gxe-selection',
+];
 
 const migrated = new Set(PAGE_BODY_MIGRATED_SLUGS);
 

@@ -301,7 +301,61 @@ export async function normalizeBlocks(
     index += 1;
   }
 
-  return out;
+  return promoteAdjacentFigureCaptions(out);
+}
+
+/**
+ * 画像直後に独立した斜体段落として書かれた図説明を、画像の caption へ昇格する。
+ *
+ * Notion では画像ブロック自身の caption と、画像直後の段落のどちらでも見た目上は
+ * 図説明を書ける。AIと統計学03は後者で執筆済みだった。後者を通常段落のまま扱うと、
+ * `<figcaption>` にならないうえ、caption の無い SVG では代替テキストも決められない。
+ *
+ * 任意の斜体段落を吸収しないよう、次の全条件を満たす場合だけ昇格する。
+ *
+ * - 画像ブロック自身の caption が空
+ * - 直後が、すべて斜体の text 断片からなる段落
+ * - 見える文字列が「図1.」「模式図.」「Figure 1:」等の図ラベルで始まる
+ *
+ * 昇格した段落は通常段落としては残さない。figure caption と本文に同じ説明が二重に
+ * 出るのを防ぐためである。既に caption がある画像や、通常の斜体段落は変更しない。
+ */
+function promoteAdjacentFigureCaptions(blocks: readonly ArticleBlock[]): ArticleBlock[] {
+  const promoted: ArticleBlock[] = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const next = blocks[index + 1];
+
+    if (
+      block.kind === 'image' &&
+      block.caption.length === 0 &&
+      next?.kind === 'paragraph' &&
+      isFigureCaptionParagraph(next)
+    ) {
+      promoted.push({
+        ...block,
+        caption: next.richText,
+        alt: plainTextOf(next.richText),
+      });
+      index += 1;
+      continue;
+    }
+
+    promoted.push(block);
+  }
+
+  return promoted;
+}
+
+function isFigureCaptionParagraph(
+  block: Extract<ArticleBlock, { kind: 'paragraph' }>,
+): boolean {
+  if (block.richText.length === 0) return false;
+  if (!block.richText.every((node) => node.kind === 'text' && node.italic)) return false;
+
+  const text = plainTextOf(block.richText).trim();
+  return /^(?:図\s*\d+|模式図|fig(?:ure)?\s*\d+)[.．:：]/iu.test(text);
 }
 
 const LIST_TYPES: Record<string, 'ordered' | 'unordered' | undefined> = {

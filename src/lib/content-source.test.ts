@@ -45,8 +45,9 @@ const allowAll = () => true;
 const allowNone = () => false;
 
 describe('migration allowlist', () => {
-  it('初期値は空。Issue #4 単独では全記事が legacy のまま', () => {
-    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], []);
+  it('Issue #8 の canary だけを page body へ移行する', () => {
+    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], ['allrounder-or-master-gxe-selection']);
+    assert.equal(usesPageBodySource('allrounder-or-master-gxe-selection'), true);
     assert.equal(usesPageBodySource('rtx-5090'), false);
   });
 });
@@ -395,9 +396,12 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
     }
   });
 
-  it('既定では版管理された allowlist（空）を見るので何も報告しない', () => {
-    assert.deepEqual(findUnknownMigratedSlugs(published), []);
-    assert.deepEqual(findUnknownMigratedSlugs([]), []);
+  it('既定では版管理された canary allowlist を見る', () => {
+    assert.deepEqual(findUnknownMigratedSlugs(published), ['allrounder-or-master-gxe-selection']);
+    assert.deepEqual(
+      findUnknownMigratedSlugs([...published, 'allrounder-or-master-gxe-selection']),
+      [],
+    );
   });
 
   it('エラー文に該当 slug と考えられる原因が入る', () => {
@@ -410,8 +414,8 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
 });
 
 describe('Issue #5 後も #4 の安全契約が効いている', () => {
-  it('migration allowlist は空のまま（canary 有効化は Issue #8）', () => {
-    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], []);
+  it('migration allowlist は Issue #8 の canary 1件だけ', () => {
+    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], ['allrounder-or-master-gxe-selection']);
   });
 
   it('ページ本文の source は取得の段で不変条件に掛かる', async () => {
