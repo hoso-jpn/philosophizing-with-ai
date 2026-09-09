@@ -1,6 +1,6 @@
 # Architecture decisions
 
-最終更新: 2026-09-03
+最終更新: 2026-09-09
 
 この文書は、PR #1 までに確定した設計判断の正本です。会話や古いPRコメントではなく、この文書を優先してください。
 
@@ -20,14 +20,15 @@ Phase 2+3 は統合し、**画像の恒久化 → `getStaticPaths` → `output: 
 
 ## D-4 — Notion webhook の購読イベント
 
-Phase 1–3 時点の購読対象:
+現在の購読対象:
 
 - `page.properties_updated`
+- `page.content_updated`
 - `page.deleted`
 - `page.undeleted`
 - `data_source.schema_updated`
 
-本文を Notion ページ本文へ移行する Phase 5 では `page.content_updated` を追加する。
+page-body canary の公開に伴い、本文の編集も再ビルドへ流す。
 
 ## D-5 — webhook の再開時期
 
@@ -368,3 +369,13 @@ AIと統計学03の6図は、画像ブロック自身の caption ではなく、
 そこで、画像自身の caption が空で、直後がすべて斜体の text 断片からなり、かつ「図1.」「模式図.」「Figure 1:」等の明示的な図ラベルで始まる場合だけ、その段落を画像 caption へ昇格する。昇格した段落は本文から除き、figure caption と通常段落の二重表示を避ける。
 
 任意の斜体段落は吸収しない。既に caption がある画像、斜体でない段落、図ラベルの無い斜体段落は従来どおり保持する。これによりNotion上の既存の意味を保ったまま、`<figure>` / `<img alt>` / `<figcaption>` の意味構造へ変換する。
+
+## D-53 — Notion API 2026-03-11 は単一 data source を discovery して採用する
+
+`Notion-Version` を `2022-06-28` から現行の `2026-03-11` へ上げる。2025-09-03 の非互換変更で database は data source の container になり、行の query は `databases/:id/query` から `data_sources/:id/query` へ移った。古い endpoint を残すと、database に第2の source が追加された時点で query が壊れるため、更新する価値がある。
+
+既存の `NOTION_DATABASE_ID` は捨てない。初回 query の前に `GET databases/:database_id` で子の `data_sources` を取得し、1件だけならその ID をプロセス内でメモ化する。0件・壊れた応答・複数件なら暗黙に先頭を選ばず fail closed にする。複数 source を意図して使う場合だけ、任意の `NOTION_DATA_SOURCE_ID` で対象を明示する。これにより既存の Vercel 設定を変更せずに移行でき、将来の複数 source 化でも誤った記事集合を公開しない。
+
+2026-03-11 で 2025-09-03 から変わる `append block children` の `position`、`archived` から `in_trash` への変更、`transcription` から `meeting_notes` への変更は、この read-only の取得経路では使用していない。page retrieve と block children の endpoint、pagination、rich text / equation / image / file の読み取り形は既存の loose schema と typed normalization で検証を続ける。query pagination は `has_more=true` かつ `next_cursor` 無しを成功扱いせず落とす。
+
+Webhook subscription の version は REST の `Notion-Version` header とは独立している。handler は移行中の互換性のため legacy `database.*` と現行 `data_source.*` の両方を分類し、Published property ID の percent-encoding 差も引き続き正規化する。subscription を更新するときは `2026-03-11` とし、page-body canary のため `page.content_updated` を含める。初回 `verification_token` の値は恒久ログへ出さず、handler のログでは redacted にする。
