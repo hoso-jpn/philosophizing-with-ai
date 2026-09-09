@@ -21,6 +21,7 @@
  */
 export const PAGE_BODY_MIGRATED_SLUGS: readonly string[] = [
   'allrounder-or-master-gxe-selection',
+  'determinism-free-will-ai',
 ];
 
 const migrated = new Set(PAGE_BODY_MIGRATED_SLUGS);

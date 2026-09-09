@@ -45,9 +45,13 @@ const allowAll = () => true;
 const allowNone = () => false;
 
 describe('migration allowlist', () => {
-  it('Issue #8 の canary だけを page body へ移行する', () => {
-    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], ['allrounder-or-master-gxe-selection']);
+  it('検証済みの記事だけを段階的に page body へ移行する', () => {
+    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], [
+      'allrounder-or-master-gxe-selection',
+      'determinism-free-will-ai',
+    ]);
     assert.equal(usesPageBodySource('allrounder-or-master-gxe-selection'), true);
+    assert.equal(usesPageBodySource('determinism-free-will-ai'), true);
     assert.equal(usesPageBodySource('rtx-5090'), false);
   });
 });
@@ -396,7 +400,7 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
     }
   });
 
-  it('既定では版管理された canary allowlist を見る', () => {
+  it('既定では版管理された migration allowlist を見る', () => {
     assert.deepEqual(findUnknownMigratedSlugs(published), ['allrounder-or-master-gxe-selection']);
     assert.deepEqual(
       findUnknownMigratedSlugs([...published, 'allrounder-or-master-gxe-selection']),
@@ -414,8 +418,11 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
 });
 
 describe('Issue #5 後も #4 の安全契約が効いている', () => {
-  it('migration allowlist は Issue #8 の canary 1件だけ', () => {
-    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], ['allrounder-or-master-gxe-selection']);
+  it('migration allowlist は検証済みの2件だけ', () => {
+    assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], [
+      'allrounder-or-master-gxe-selection',
+      'determinism-free-will-ai',
+    ]);
   });
 
   it('ページ本文の source は取得の段で不変条件に掛かる', async () => {
