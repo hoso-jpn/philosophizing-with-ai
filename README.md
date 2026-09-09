@@ -28,13 +28,15 @@ Vercel
 | `Slug` | rich_text | ✅ | `/posts/<slug>` |
 | `Date` | date | ✅ | 公開日 |
 | `Published` | checkbox | ✅ | 公開判定 |
-| `Content` | rich_text | ✅ | 現在の本文。Phase 5 でページ本文へ移行予定 |
+| `Content` | rich_text | ※ | legacy 本文。ページ本文へ移行済みの記事でも rollback 用に保持 |
 | `Tags` | rich_text / multi_select | ✅ | タグ |
 | `Description` | rich_text |  | 概要 |
 | `HeroImage` | files |  | アイキャッチ |
 | `Format` | select / rich_text |  | Phase 4 用。未使用でも壊れない |
 
-※ `名前` と `Title` はどちらか一方が必要です。
+※ `名前` と `Title` はどちらか一方が必要です。`Content` は
+`src/lib/migration-allowlist.ts` に無い legacy 記事で必須です。ページ本文への切り替えは
+同 allowlist で記事単位に行います。
 
 旧 `Status` 列は廃止し、公開判定は `Published` に一本化しています。
 
@@ -43,7 +45,7 @@ Vercel
 次の状態は静かに公開せず、ビルドを失敗させます。
 
 - 必須プロパティの欠落・型違い
-- `Slug` / `Date` / `Content` が空
+- `Slug` / `Date`、または選択された本文 source が空
 - 公開記事が 0 件、または `MIN_EXPECTED_POSTS` を下回る
 - 自サイトを指す絶対 URL や `/posts/<Notion UUID>` が残っている
 - 外部画像のローカル化に失敗する
@@ -82,7 +84,8 @@ Notion の files URL は期限付きなので、HeroImage と外部本文画像�
 [images] localized: https://example.com/image.png → /notion-static/<hash>.png (slug)
 ```
 
-Phase 5 前に本文へ手動で図を入れる場合は、暫定的に `public/images/` へ置いて `/images/<file>` で参照します。
+ページ本文の画像も build 時にローカル化します。caption または SVG の `title` から
+意味のある代替テキストを作れない画像は公開しません。
 
 ## Notion webhook
 
@@ -161,6 +164,7 @@ npm run dev
 
 ## 今後
 
-PR #1 のスコープは Phase 1–3 です。Markdown 本文への一括移行・記事の事実修正・引用形式・文体統一は Phase 5 で行います。
+Notion ページ本文への移行は `src/lib/migration-allowlist.ts` へ検証済みの記事を1件ずつ
+追加して進めます。一括切り替えは行いません。
 
 Phase 5 の本文改修対象は `docs/decisions.md` の D-22 を正とします。
