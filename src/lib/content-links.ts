@@ -347,3 +347,26 @@ export function findUrlPolicyViolation(raw: string): UrlPolicyViolation | null {
       : '自サイトへの絶対 URL です。相対パス（/posts/<slug>）に書き換えてください',
   };
 }
+
+/* --------------------------------------------------- 診断へ URL を載せるとき */
+
+/**
+ * URL を診断・ログへ載せられる形へ落とす。
+ *
+ * **画像の取得元 URL には署名や資格情報が乗る。** Notion がホストする画像は
+ * `X-Amz-Signature` / `X-Amz-Credential` / `X-Amz-Security-Token` を、外部の
+ * 画像配信も `token=` や `Authorization=` をクエリに持つことがある。診断へ生の
+ * URL を書くと、ビルドログという公開されうる場所へそれが流れる。
+ *
+ * どこから取ろうとしたかは origin + pathname で十分に分かるので、クエリと
+ * フラグメントは落とす。**規則を 2 か所に書かない**（D-19）ため、URL の扱いは
+ * このファイルに集約し、article-media.ts と article-links.ts の双方から使う。
+ */
+export function safeUrlForLog(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return '(URL として解釈できない値)';
+  }
+}
