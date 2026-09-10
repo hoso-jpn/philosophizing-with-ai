@@ -8,6 +8,7 @@ import ArticleContent from '../../components/article/ArticleContent.astro';
 import LegacyArticleContent from '../../components/article/LegacyArticleContent.astro';
 import ArticleShell from '../../components/article/ArticleShell.astro';
 import ArticleSeriesNavigation from '../../components/article/ArticleSeriesNavigation.astro';
+import ArticleComments from '../../components/article/ArticleComments.astro';
 
 // 記事ページはビルド時に全件生成する。
 // 記事を props で渡すので、ページごとに Notion を引き直さない（1ビルド 1クエリ）。
@@ -65,13 +66,14 @@ const seriesName = getSeriesName(post);
   ) : (
     <ArticleContent document={source.document} />
   )}
-  {navigation && (navigation.previous || navigation.next) && (
-    <Fragment slot="after-content">
+  <Fragment slot="after-content">
+    {navigation && (navigation.previous || navigation.next) && (
       <ArticleSeriesNavigation
         seriesName={navigation.seriesName}
         previous={navigation.previous}
         next={navigation.next}
       />
-    </Fragment>
-  )}
+    )}
+    <ArticleComments />
+  </Fragment>
 </ArticleShell>

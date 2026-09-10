@@ -1,0 +1,54 @@
+---
+import { resolveGiscusConfig, type GiscusConfig } from '../../lib/giscus';
+
+interface Props {
+  config?: GiscusConfig | null;
+  /** 将来のサイトテーマ切替もこの境界から渡す。 */
+  theme?: 'dark' | 'light';
+}
+
+const {
+  config = resolveGiscusConfig({
+    PUBLIC_GISCUS_CATEGORY: import.meta.env.PUBLIC_GISCUS_CATEGORY,
+    PUBLIC_GISCUS_CATEGORY_ID: import.meta.env.PUBLIC_GISCUS_CATEGORY_ID,
+  }),
+  theme = 'dark',
+} = Astro.props;
+---
+
+{config && (
+  <section class="article-comments" aria-labelledby="article-comments-heading">
+    <h2 id="article-comments-heading">コメント</h2>
+    <p class="comment-help">
+      コメントの投稿にはGitHubアカウントが必要です。
+      <a href={`https://github.com/${config.repo}/discussions`}>GitHub Discussionsで見る</a>
+    </p>
+    <div class="giscus"></div>
+    <script
+      is:inline
+      src="https://giscus.app/client.js"
+      data-repo={config.repo}
+      data-repo-id={config.repoId}
+      data-category={config.category}
+      data-category-id={config.categoryId}
+      data-mapping="pathname"
+      data-strict="1"
+      data-reactions-enabled="1"
+      data-emit-metadata="0"
+      data-input-position="top"
+      data-theme={theme}
+      data-lang="ja"
+      data-loading="lazy"
+      crossorigin="anonymous"
+      async
+    ></script>
+    <noscript><p>コメント欄を表示するにはJavaScriptを有効にするか、上のGitHub Discussionsリンクを開いてください。</p></noscript>
+  </section>
+)}
+
+<style>
+  .article-comments { min-width: 0; margin-top: 2rem; }
+  h2 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+  .comment-help { color: var(--text-muted); font-size: 0.9rem; line-height: 1.7; }
+  .giscus { width: 100%; }
+</style>
