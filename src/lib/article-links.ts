@@ -3,6 +3,28 @@ import { collectArticleImages, collectArticleRichText } from './article-document
 import type { ArticleDocument } from './article-document.ts';
 
 /**
+ * Notion が相対リンクへ補った app origin だけを戻す。
+ * 公開記事の正確な slug に限り解決する。UUID・typo・他ホストは後段の検査で落とす。
+ * キャッシュされた本文は変更せず、caption / table / 入れ子も共通走査で扱う。
+ */
+export function resolveNotionArticleLinks(
+  document: ArticleDocument,
+  publishedSlugs: ReadonlySet<string>,
+): ArticleDocument {
+  const resolved = structuredClone(document);
+  for (const { nodes } of collectArticleRichText(resolved)) {
+    for (const node of nodes) {
+      if (node.kind !== 'text' || node.href === null) continue;
+      const match = /^https:\/\/app\.notion\.com\/posts\/([a-z0-9]+(?:-[a-z0-9]+)*)([?#][^\s]*)?$/.exec(node.href);
+      if (match && publishedSlugs.has(match[1])) {
+        node.href = `/posts/${match[1]}${match[2] ?? ''}`;
+      }
+    }
+  }
+  return resolved;
+}
+
+/**
  * ページ本文（ArticleDocument）に対する URL の不変条件。
  *
  * legacy `Content` には `assertNoSelfReferencingUrls` が掛かっているが、あれは

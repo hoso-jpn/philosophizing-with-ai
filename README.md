@@ -7,7 +7,7 @@
 ## アーキテクチャ
 
 ```text
-Notion database
+Notion database / data source
    │  REST API
    ▼
 Astro
@@ -28,13 +28,14 @@ Vercel
 | `Slug` | rich_text | ✅ | `/posts/<slug>` |
 | `Date` | date | ✅ | 公開日 |
 | `Published` | checkbox | ✅ | 公開判定 |
-| `Content` | rich_text | ✅ | 現在の本文。Phase 5 でページ本文へ移行予定 |
+| `Content` | rich_text | ※ | legacy 本文。page-body 移行済み記事では不要 |
 | `Tags` | rich_text / multi_select | ✅ | タグ |
 | `Description` | rich_text |  | 概要 |
 | `HeroImage` | files |  | アイキャッチ |
 | `Format` | select / rich_text |  | Phase 4 用。未使用でも壊れない |
 
-※ `名前` と `Title` はどちらか一方が必要です。
+※ `名前` と `Title` はどちらか一方が必要です。`Content` は
+`src/lib/migration-allowlist.ts` にない記事だけ必須です。
 
 旧 `Status` 列は廃止し、公開判定は `Published` に一本化しています。
 
@@ -82,7 +83,7 @@ Notion の files URL は期限付きなので、HeroImage と外部本文画像�
 [images] localized: https://example.com/image.png → /notion-static/<hash>.png (slug)
 ```
 
-Phase 5 前に本文へ手動で図を入れる場合は、暫定的に `public/images/` へ置いて `/images/<file>` で参照します。
+page-body 移行前の記事へ手動で図を入れる場合は、暫定的に `public/images/` へ置いて `/images/<file>` で参照します。
 
 ## Notion webhook
 
@@ -91,11 +92,10 @@ Phase 5 前に本文へ手動で図を入れる場合は、暫定的に `public/
 購読対象:
 
 - `page.properties_updated`
+- `page.content_updated`
 - `page.deleted`
 - `page.undeleted`
 - `data_source.schema_updated`
-
-Phase 5 で Notion ページ本文へ移行したら `page.content_updated` も追加します。
 
 ### ビルド判定
 
@@ -119,13 +119,23 @@ Phase 5 で Notion ページ本文へ移行したら `page.content_updated` も�
 ```text
 NOTION_API_KEY
 NOTION_DATABASE_ID
+NOTION_DATA_SOURCE_ID  # 任意。database が単一 source なら自動解決
 VERCEL_DEPLOY_HOOK_URL
 NOTION_WEBHOOK_VERIFICATION_TOKEN
 ```
 
+REST API は `Notion-Version: 2026-03-11` を使います。`NOTION_DATA_SOURCE_ID` が未設定なら
+`NOTION_DATABASE_ID` から単一 data source を discovery します。複数 source がある場合は
+暗黙に先頭を選ばず、`NOTION_DATA_SOURCE_ID` の設定を求めてビルドを止めます。
+
+Webhook subscription の API version は REST header とは別管理です。Notion の Developer
+portal で subscription を更新するときも `2026-03-11` を選び、上記イベントを購読してください。
+
 購読作成時の `verification_token` は通常イベントの署名秘密です。Production の `NOTION_WEBHOOK_VERIFICATION_TOKEN` として保存し、**環境変数を含む新しい Production deployment を作成してから購読を有効化**してください。
 
-verification token をソース・PR本文・恒久ログへ貼らないでください。
+verification token をソース・PR本文・恒久ログへ貼らないでください。handler も値を redacted
+として記録します。購読を新規作成・再作成するときは、Notion の案内どおり incoming request
+を一時的な安全な経路で確認し、取得した値を直接 secret store へ保存してください。
 
 ### 本番反映後の確認順
 

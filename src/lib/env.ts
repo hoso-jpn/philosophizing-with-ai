@@ -32,6 +32,17 @@ export function getNotionDatabaseId(): string {
 }
 
 /**
+ * database に複数 data source がある場合の明示値。
+ * 未設定なら 2026-03-11 API の database retrieve で単一 source を自動解決する。
+ */
+export function getNotionDataSourceId(): string | undefined {
+  const nodeValue = typeof process !== 'undefined' ? process.env?.NOTION_DATA_SOURCE_ID : undefined;
+  const viteValue = import.meta.env?.NOTION_DATA_SOURCE_ID;
+  const value = typeof viteValue === 'string' && viteValue !== '' ? viteValue : nodeValue;
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+}
+
+/**
  * 公開記事がこの本数を下回ったらビルドを止める下限値。
  * Notion のトークン失効・API 障害・プロパティ名変更はいずれも「取得0件」に化けるため、
  * 記事が消えたサイトが平然と本番へ出るのを防ぐ。
