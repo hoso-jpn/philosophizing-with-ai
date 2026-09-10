@@ -1,4 +1,10 @@
-import { getMinExpectedPosts, getNotionApiKey, getNotionDatabaseId } from './env.ts';
+import {
+  getMinExpectedPosts,
+  getNotionApiKey,
+  getNotionDatabaseId,
+  getNotionDataSourceId,
+} from './env.ts';
+import { createNotionApiClient } from './notion-api.ts';
 import {
   assertNoSelfReferencingUrls,
   countReferencedHosts,
@@ -23,51 +29,21 @@ import {
 } from './download-image.ts';
 import type { ParsedPost, Post } from './types.ts';
 
-const NOTION_VERSION = '2022-06-28';
+let notionApi: ReturnType<typeof createNotionApiClient> | null = null;
 
-/**
- * Notion API 呼び出し。
- * 失敗を握り潰さず必ず投げる。以前は catch して [] を返していたため、
- * トークン失効も API 障害も「記事0本のサイト」として正常終了していた。
- */
-async function notionFetch(path: string, body?: unknown): Promise<any> {
-  const response = await fetch(`https://api.notion.com/v1/${path}`, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      Authorization: `Bearer ${getNotionApiKey()}`,
-      'Notion-Version': NOTION_VERSION,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
+/** 環境変数は初回利用時に読む。unit test で notion.ts を import しただけでは要求しない。 */
+function getNotionApi(): ReturnType<typeof createNotionApiClient> {
+  notionApi ??= createNotionApiClient({
+    apiKey: getNotionApiKey(),
+    databaseId: getNotionDatabaseId(),
+    dataSourceId: getNotionDataSourceId(),
   });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(
-      `Notion API への ${path} が失敗しました: ${response.status} ${response.statusText}\n${detail.slice(0, 500)}`,
-    );
-  }
-  return response.json();
+  return notionApi;
 }
 
 /** ページネーションを辿って全件取得する */
 async function queryDatabase(filter?: unknown, sorts?: unknown): Promise<unknown[]> {
-  const databaseId = getNotionDatabaseId();
-  const results: unknown[] = [];
-  let cursor: string | undefined;
-
-  do {
-    const page = await notionFetch(`databases/${databaseId}/query`, {
-      filter,
-      sorts,
-      page_size: 100,
-      start_cursor: cursor,
-    });
-    results.push(...(page.results ?? []));
-    cursor = page.has_more ? page.next_cursor : undefined;
-  } while (cursor);
-
-  return results;
+  return getNotionApi().queryDataSource({ filter, sorts });
 }
 
 /**
@@ -79,9 +55,7 @@ async function queryDatabase(filter?: unknown, sorts?: unknown): Promise<unknown
  * 取得の失敗を「本文が空」と取り違えると移行済み記事が黙って古い本文へ戻る。
  */
 function fetchBlockChildrenPage(blockId: string, cursor: string | null): Promise<unknown> {
-  const query = new URLSearchParams({ page_size: '100' });
-  if (cursor) query.set('start_cursor', cursor);
-  return notionFetch(`blocks/${blockId}/children?${query}`);
+  return getNotionApi().retrieveBlockChildren(blockId, cursor);
 }
 
 function reportWarnings(warnings: ParseWarning[]): void {
@@ -339,7 +313,7 @@ export type PagePublishState = {
  * 取得自体に失敗した場合は例外を投げる（呼び出し側で安全側に倒す）。
  */
 export async function getPagePublishState(pageId: string): Promise<PagePublishState> {
-  const page = await notionFetch(`pages/${pageId}`);
+  const page = (await getNotionApi().retrievePage(pageId)) as any;
   const published = page?.properties?.Published;
   const slug = (page?.properties?.Slug?.rich_text ?? [])
     .map((t: { plain_text?: string }) => t?.plain_text ?? '')

@@ -74,7 +74,7 @@ async function decideByPublishState(
 
   // properties_updated だけは、Published の突き合わせ材料をログへ添える。
   // webhook 側（購読の API バージョン）が返すプロパティIDと、REST API
-  // （Notion-Version 2022-06-28）から読んだ Published のIDが同じ表記かは
+  // （Notion-Version 2026-03-11）から読んだ Published のIDが同じ表記かは
   // 実イベントを一度見るまで確定できないため、初回で確認できるようにしておく。
   const detail =
     action.eventType === 'page.properties_updated'
@@ -148,7 +148,8 @@ export const POST: APIRoute = async ({ request }) => {
       case 'verification':
         // verification_token は Notion の画面へ貼り戻し、同時に Vercel の
         // NOTION_WEBHOOK_VERIFICATION_TOKEN として保存する。購読を作り直したら必ず更新する。
-        log(`verification request received. verification_token=${action.token ?? '(none)'}`);
+        // 値を恒久ログへ出さない。Vercel logs は運用者以外にも共有・転送されうる。
+        log(`verification request received (token ${action.token ? 'redacted' : 'missing'})`);
         return json(
           200,
           action.challenge ? { challenge: action.challenge } : { message: 'verification received' },
