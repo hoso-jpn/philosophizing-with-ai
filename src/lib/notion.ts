@@ -20,7 +20,7 @@ import {
   resolveArticleContentSource,
   type ArticleContentSource,
 } from './content-source.ts';
-import { assertArticleUrlInvariants } from './article-links.ts';
+import { assertArticleUrlInvariants, resolveNotionArticleLinks } from './article-links.ts';
 import { assertNoRemoteArticleImages, localizeArticleDocumentMedia } from './article-media.ts';
 import {
   assertNoExternalContentImages,
@@ -238,7 +238,8 @@ async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
   // ページ本文にも legacy と同じ不変条件を当てる（Issue #6）。
   // ここまでは #4 の暫定 guard が「検査が無いこと」を理由に止めていた場所で、
   // 今はその guard そのものを実際の検査へ置き換えてある
-  return Promise.all(resolved.map(applyPageBodyInvariants));
+  const publishedSlugs = new Set(posts.map((post) => post.slug));
+  return Promise.all(resolved.map((post) => applyPageBodyInvariants(post, publishedSlugs)));
 }
 
 /**
@@ -251,10 +252,11 @@ async function resolveContentSources(posts: ParsedPost[]): Promise<Post[]> {
  *
  * legacy source の記事は素通りする。あちらは fetchPosts の前段で既に検査済み。
  */
-async function applyPageBodyInvariants(post: Post): Promise<Post> {
+async function applyPageBodyInvariants(post: Post, publishedSlugs: ReadonlySet<string>): Promise<Post> {
   if (post.contentSource.kind !== 'notion-page') return post;
 
-  const { pageId, document } = post.contentSource;
+  const { pageId } = post.contentSource;
+  const document = resolveNotionArticleLinks(post.contentSource.document, publishedSlugs);
   const context = { slug: post.slug };
 
   // 1. URL の正規形（自サイト絶対 URL / Notion のページ ID / //host 形式）

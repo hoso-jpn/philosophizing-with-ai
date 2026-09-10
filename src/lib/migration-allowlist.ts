@@ -21,6 +21,8 @@
  */
 export const PAGE_BODY_MIGRATED_SLUGS: readonly string[] = [
   'allrounder-or-master-gxe-selection',
+  // Issue #13 の段階 rollout 1 本目。legacy Content は rollback 用に保持する。
+  'determinism-free-will-ai',
 ];
 
 const migrated = new Set(PAGE_BODY_MIGRATED_SLUGS);
