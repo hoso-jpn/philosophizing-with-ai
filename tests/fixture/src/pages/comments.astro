@@ -1,0 +1,12 @@
+---
+import ArticleComments from '../../../../src/components/article/ArticleComments.astro';
+import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
+import { resolveGiscusConfig } from '../../../../src/lib/giscus';
+const config = resolveGiscusConfig({
+  PUBLIC_GISCUS_CATEGORY: 'Announcements', PUBLIC_GISCUS_CATEGORY_ID: 'DIC_fixture',
+});
+---
+<ArticleShell title="コメント欄の検証" description="本文は外部サービスなしでも読めます" pubDate="2026-09-10">
+  <p>コメントサービスが読み込めなくても、この本文は静的HTMLとして残ります。</p>
+  <ArticleComments slot="after-content" config={config} />
+</ArticleShell>

@@ -19,7 +19,10 @@ async function emittedCss() {
   const sheets = await Promise.all(
     hrefs.map((href) => readFile(new URL(`.${href}`, distRoot), 'utf-8')),
   );
-  return sheets.join('\n');
+  // ページ追加でCSSが共通chunkへ分割されると、Astroは小さなchunkをinline化する。
+  // linkだけでは実際に適用されるCSSの一部を見落とす。
+  const inlineStyles = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+  return [...sheets, ...inlineStyles].join('\n');
 }
 
 /**
@@ -125,4 +128,22 @@ assert.match(
   'legacy 本文の img/video/pre に max-width が当たっていません（画像とコードが横にはみ出します）',
 );
 
-console.log('fixture build output: renderer / media / URL / scoped-style invariants are valid');
+// Astroが出力したscriptを検査する。設定前はsectionも外部通信も追加しない。
+const commentsHtml = await readFile(new URL('comments/index.html', distRoot), 'utf-8');
+const commentsScript = commentsHtml.match(/<script\b[^>]*src="https:\/\/giscus\.app\/client\.js"[^>]*>/)?.[0];
+assert.ok(commentsScript, 'giscusのscriptが生成されていません');
+for (const attribute of [
+  'data-repo="hoso-jpn/philosophizing-with-ai"', 'data-repo-id="R_kgDORl9JSg"',
+  'data-category="Announcements"', 'data-category-id="DIC_fixture"',
+  'data-mapping="pathname"', 'data-strict="1"', 'data-reactions-enabled="1"',
+  'data-theme="dark"', 'data-lang="ja"', 'data-loading="lazy"',
+  'crossorigin="anonymous"', 'async',
+]) assert.ok(commentsScript.includes(attribute), `giscusに ${attribute} がありません`);
+assert.match(commentsHtml, /aria-labelledby="article-comments-heading"/);
+assert.match(commentsHtml, /<noscript>/);
+assert.match(commentsHtml, /コメントサービスが読み込めなくても、この本文は静的HTMLとして残ります。/);
+assert.ok(commentsHtml.indexOf('id="article-comments-heading"') < commentsHtml.indexOf(commentsScript));
+const disabledHtml = await readFile(new URL('no-series/index.html', distRoot), 'utf-8');
+assert.doesNotMatch(disabledHtml, /giscus\.app|class="article-comments"/);
+
+console.log('fixture build output: renderer / media / URL / scoped-style / comments invariants are valid');

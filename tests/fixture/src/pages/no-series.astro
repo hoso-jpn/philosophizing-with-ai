@@ -9,6 +9,7 @@
  */
 import ArticleShell from '../../../../src/components/article/ArticleShell.astro';
 import LegacyArticleContent from '../../../../src/components/article/LegacyArticleContent.astro';
+import ArticleComments from '../../../../src/components/article/ArticleComments.astro';
 
 export const prerender = true;
 
@@ -16,7 +17,8 @@ const navigation: { previous: unknown; next: unknown } | null = { previous: null
 ---
 <ArticleShell title="単発記事" description="シリーズに属さない記事" pubDate="2026-09-08">
   <LegacyArticleContent content={'## 単発\n\n本文。'} />
-  {navigation && (navigation.previous || navigation.next) && (
-    <Fragment slot="after-content"><p>出てはいけない</p></Fragment>
-  )}
+  <Fragment slot="after-content">
+    {navigation && (navigation.previous || navigation.next) && <p>出てはいけない</p>}
+    <ArticleComments config={null} />
+  </Fragment>
 </ArticleShell>
