@@ -2,10 +2,13 @@
 import BaseHead from '../components/BaseHead.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import HomeIntro from '../components/HomeIntro.astro';
+import FeaturedPosts from '../components/FeaturedPosts.astro';
+import { HOME_META_DESCRIPTION, HOME_PAGE_TITLE } from '../consts';
 import { getPosts } from '../lib/notion';
 import { getSlugFromTag } from '../lib/tag-slugs';
 import { groupPostsBySeries } from '../lib/series';
+import { resolveFeaturedPosts } from '../lib/featured-posts';
 
 const posts = await getPosts();
 
@@ -17,6 +20,12 @@ const formatDate = (dateStr: string) => {
     day: 'numeric',
   });
 };
+
+// 0. 代表記事（「初めての方へ」）
+// 取得経路は既存の getPosts() ひとつだけ。選定は slug の照合なので、
+// 公開一覧に無い slug はここでリンクにならず、警告としてビルドログへ出る。
+const featured = resolveFeaturedPosts(posts);
+for (const warning of featured.warnings) console.warn(warning);
 
 // 1. キーワード（タグ）の集計
 const tagCounts = posts.reduce((acc, post) => {
@@ -47,7 +56,12 @@ const postsByMonth = posts.reduce((acc, post) => {
 <!doctype html>
 <html lang="ja">
   <head>
-    <BaseHead title={`アーカイブ | ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
+    <!--
+      トップ専用の title / description を渡す。SITE_TITLE / SITE_DESCRIPTION の値は
+      変えていないので、他ページの出力は従来どおり。og:title / og:description も
+      BaseHead 内で同じ値を使うため、title / description / OGP は自動で揃う。
+    -->
+    <BaseHead title={HOME_PAGE_TITLE} description={HOME_META_DESCRIPTION} />
     <style>
       /* 基本設定：PCでは最大720px、スマホでは横幅いっぱいに広がる */
       main { 
@@ -60,13 +74,6 @@ const postsByMonth = posts.reduce((acc, post) => {
       
       section { margin-bottom: 3rem; }
       
-      /* タイトルのフォントサイズをスマホで調整 */
-      h1 { 
-        font-size: 2.2rem; 
-        line-height: 1.2;
-        word-break: break-word; /* 長い単語での改行を許可 */
-      }
-
       h2 { 
         border-bottom: 1px solid var(--border); 
         padding-bottom: 0.5rem; 
@@ -106,10 +113,15 @@ const postsByMonth = posts.reduce((acc, post) => {
       .archive-date { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem; }
       .archive-link { font-weight: 500; text-decoration: none; color: var(--text); line-height: 1.4; }
       .archive-link:hover { color: var(--green-bright); text-decoration: underline; }
+      /* 暗い配色では既定の focus ring が見えにくい。キーボード操作の現在地を必ず残す */
+      .archive-link:focus-visible,
+      .tag-item:focus-visible {
+        outline: 2px solid var(--green-bright);
+        outline-offset: 3px;
+      }
 
       /* 【追加】スマートフォン用の微調整（画面幅600px以下） */
       @media (max-width: 600px) {
-        h1 { font-size: 1.8rem; }
         h2 { font-size: 1.3rem; }
         main { padding: 0.8rem; } /* 余白を少し詰める */
         .archive-item { padding-left: 0.8rem; }
@@ -119,20 +131,13 @@ const postsByMonth = posts.reduce((acc, post) => {
   <body>
     <Header />
     <main>
-      <h1 style="font-size: 2.2rem; margin-bottom: 2rem;">思索のアーカイブ</h1>
+      <!-- 1. 主見出し・紹介文（h1 はこの中に 1 つだけ） -->
+      <HomeIntro />
 
-      <section>
-        <h2>キーワード集</h2>
-        <p style="font-size: 0.9rem; color: var(--text-muted);">よく触れられている思索のテーマ</p>
-        <div class="tag-cloud">
-          {sortedTags.map(([tag, count]) => (
-            <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-item">
-              {tag} <span class="tag-count">({count})</span>
-            </a>
-          ))}
-        </div>
-      </section>
+      <!-- 2. 初めての方へ：代表記事。解決できた記事が 0 件なら section ごと出ない -->
+      <FeaturedPosts posts={featured.posts} />
 
+      <!-- 3. シリーズ別（分類・並び順のロジックは groupPostsBySeries のまま） -->
       <section>
         <h2>シリーズ別</h2>
         {postsBySeries.map(s => (
@@ -150,6 +155,20 @@ const postsByMonth = posts.reduce((acc, post) => {
         ))}
       </section>
 
+      <!-- 4. キーワード集 -->
+      <section>
+        <h2>キーワード集</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted);">よく触れられている思索のテーマ</p>
+        <div class="tag-cloud">
+          {sortedTags.map(([tag, count]) => (
+            <a href={`/tags/${getSlugFromTag(tag)}`} class="tag-item">
+              {tag} <span class="tag-count">({count})</span>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <!-- 5. 月別 -->
       <section>
         <h2>月別</h2>
         {Object.keys(postsByMonth).sort().reverse().map(month => (

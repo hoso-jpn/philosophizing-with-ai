@@ -1,0 +1,124 @@
+---
+/**
+ * トップページ「初めての方へ」：代表記事への導線。
+ *
+ * 受け取るのは `resolveFeaturedPosts()` が解決済みの配列だけ。**存在しない slug は
+ * ここへ届かない**ので、このコンポーネントが 404 へのリンクを作ることはない。
+ *
+ * 代表記事が 1 件も無ければ、section ごと何も出さない。見出しと枠線だけが残った
+ * 空のセクションは、記事一覧が壊れているのか意図的に空なのか読者に判別できない。
+ *
+ * リンクは通常の a 要素。JavaScript 無しでも移動できる。
+ */
+import FormattedDate from './FormattedDate.astro';
+import type { FeaturedPost } from '../lib/featured-posts';
+
+interface Props {
+	posts: readonly FeaturedPost[];
+	/** 見出しの下に置く 1 行。省略時は既定の文言 */
+	lead?: string;
+}
+
+const { posts, lead = '関心のあるテーマから、1 本目を選べるようにしています。' } = Astro.props;
+---
+
+{
+	posts.length > 0 && (
+		<section class="featured" aria-labelledby="featured-heading">
+			<h2 id="featured-heading">初めての方へ</h2>
+			<p class="featured-lead">{lead}</p>
+			<ul class="featured-list">
+				{posts.map((post) => (
+					<li class="featured-item">
+						<p class="featured-meta">
+							{post.seriesName && <span class="featured-series">{post.seriesName}</span>}
+							<FormattedDate date={post.date} />
+						</p>
+						<h3 class="featured-title">
+							<a href={post.href} class="featured-link">
+								{post.title}
+							</a>
+						</h3>
+						<p class="featured-summary">{post.summary}</p>
+					</li>
+				))}
+			</ul>
+		</section>
+	)
+}
+
+<style>
+	.featured {
+		margin-bottom: 3rem;
+	}
+	.featured-lead {
+		font-size: 0.9rem;
+		color: var(--text-muted);
+		margin: 0.6rem 0 1.2rem;
+	}
+	.featured-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 1rem;
+	}
+	.featured-item {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 1.1rem 1.2rem;
+		/* カード幅を親に閉じ込める。grid の既定 (auto) だと、折り返せない長い
+		   文字列があったときに列がページ幅を超えて横スクロールが出る */
+		min-width: 0;
+	}
+	.featured-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.6rem;
+		margin: 0 0 0.5rem;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+	}
+	.featured-series {
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		padding: 2px 10px;
+		color: var(--green-light);
+		white-space: nowrap;
+	}
+	.featured-title {
+		font-size: 1.05rem;
+		line-height: 1.5;
+		margin: 0 0 0.5rem;
+		/* 日本語の長いタイトルを、狭い画面でカードの外へ出さない */
+		overflow-wrap: anywhere;
+	}
+	.featured-link {
+		color: var(--text);
+		text-decoration: none;
+	}
+	.featured-link:hover {
+		color: var(--green-bright);
+		text-decoration: underline;
+	}
+	/* 暗い配色では既定の focus ring が見えにくい。キーボード操作の現在地を必ず残す */
+	.featured-link:focus-visible {
+		outline: 2px solid var(--green-bright);
+		outline-offset: 3px;
+	}
+	.featured-summary {
+		margin: 0;
+		font-size: 0.9rem;
+		line-height: 1.8;
+		color: var(--text-muted);
+		overflow-wrap: anywhere;
+	}
+
+	@media (max-width: 600px) {
+		.featured-item {
+			padding: 1rem;
+		}
+	}
+</style>

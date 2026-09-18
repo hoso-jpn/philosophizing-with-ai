@@ -1,0 +1,68 @@
+---
+/**
+ * トップページの見出し・紹介文・代表記事を、認証情報なしで描く fixture。
+ *
+ * 本物の src/pages/index.astro は getPosts() を呼ぶので Notion の認証情報が要る。
+ * 認証を持たない CI ではトップページが 1 度も描かれないまま通ってしまうため、
+ * 同じコンポーネントへ fixture の記事を渡して、**代表記事が実際に描かれる正のケース**を
+ * 出力として検証する。本番 slug は fixture に無いので、そこを当てにしない。
+ *
+ * 同時に、公開一覧に無い slug がリンクにならないことも 1 ページの中で確かめる。
+ */
+import BaseHead from '../../../../src/components/BaseHead.astro';
+import FeaturedPosts from '../../../../src/components/FeaturedPosts.astro';
+import HomeIntro from '../../../../src/components/HomeIntro.astro';
+import { HOME_META_DESCRIPTION, HOME_PAGE_TITLE } from '../../../../src/consts';
+import { resolveFeaturedPosts, type FeaturedPostSource } from '../../../../src/lib/featured-posts';
+
+export const prerender = true;
+
+const posts: FeaturedPostSource[] = [
+  {
+    slug: 'fixture-philosophy',
+    title: 'AIと哲学01；fixture の哲学記事',
+    titlePrefix: 'AIと哲学01',
+    date: '2025-12-10',
+  },
+  {
+    slug: 'fixture-statistics',
+    title: 'AIと統計学01；fixture の統計記事',
+    titlePrefix: 'AIと統計学01',
+    date: '2025-12-11',
+  },
+  {
+    slug: 'fixture-implementation',
+    title:
+      'AIと実装01；fixture の実装記事――狭い画面でも折り返せるかを確かめるための、意図的に長いタイトル',
+    titlePrefix: 'AIと実装01',
+    date: '2026-09-03',
+  },
+];
+
+// 3 件目は公開一覧に無い slug。リンクが生成されないことを出力で確かめる
+const featured = resolveFeaturedPosts(posts, [
+  { slug: 'fixture-implementation', summary: '設定順が表示順になることを確かめるため、最新記事を先頭へ置く。' },
+  { slug: 'fixture-philosophy', summary: 'fixture の哲学記事の紹介文。' },
+  { slug: 'fixture-unpublished', summary: '下書きへ戻した記事。リンクは生成されない。' },
+  { slug: 'fixture-statistics', summary: 'fixture の統計記事の紹介文。' },
+]);
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <BaseHead title={HOME_PAGE_TITLE} description={HOME_META_DESCRIPTION} />
+  </head>
+  <body>
+    <main>
+      <HomeIntro />
+      <FeaturedPosts posts={featured.posts} />
+      <section>
+        <h2>シリーズ別</h2>
+        <ul class="archive-list">
+          <li><a href="/posts/fixture-philosophy">AIと哲学01；fixture の哲学記事</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

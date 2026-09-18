@@ -1,0 +1,70 @@
+---
+/**
+ * トップページの主見出しと紹介文。
+ *
+ * ページ本体（src/pages/index.astro）から切り出してあるのは、fixture ビルドでも
+ * 同じ markup を描けるようにするため。トップページ自体は Notion の認証情報が要る
+ * ので、認証なしの CI では h1 も紹介文も 1 度も描かれないまま通ってしまう。
+ *
+ * **h1 はここが 1 つだけ出す。** ページ側で別の h1 を足さないこと。
+ */
+import { HOME_HEADING, HOME_INTRO_PARAGRAPHS } from '../consts';
+
+interface Props {
+	heading?: string;
+	paragraphs?: readonly string[];
+}
+
+const { heading = HOME_HEADING, paragraphs = HOME_INTRO_PARAGRAPHS } = Astro.props;
+---
+
+<section class="home-intro">
+	<h1 class="home-heading">{heading}</h1>
+	{paragraphs.map((paragraph) => <p class="home-lead">{paragraph}</p>)}
+	<p class="home-about">
+		<a href="/about" class="home-about-link">このブログについて</a>
+	</p>
+</section>
+
+<style>
+	.home-intro {
+		margin-bottom: 3rem;
+	}
+	.home-heading {
+		font-size: 2.2rem;
+		line-height: 1.3;
+		margin: 0 0 1.2rem;
+		/* 日本語の長い見出しでも、狭い画面で横にはみ出させない */
+		overflow-wrap: anywhere;
+	}
+	.home-lead {
+		margin: 0 0 0.8rem;
+		line-height: 1.9;
+		color: var(--text);
+		overflow-wrap: anywhere;
+	}
+	.home-about {
+		margin: 1.2rem 0 0;
+	}
+	.home-about-link {
+		font-size: 0.9rem;
+		color: var(--green-bright);
+		text-decoration: none;
+		border-bottom: 1px solid var(--border);
+		padding-bottom: 2px;
+	}
+	.home-about-link:hover {
+		border-bottom-color: var(--green);
+	}
+	/* 暗い配色では既定の focus ring が見えにくい。キーボード操作の現在地を必ず残す */
+	.home-about-link:focus-visible {
+		outline: 2px solid var(--green-bright);
+		outline-offset: 3px;
+	}
+
+	@media (max-width: 600px) {
+		.home-heading {
+			font-size: 1.8rem;
+		}
+	}
+</style>
