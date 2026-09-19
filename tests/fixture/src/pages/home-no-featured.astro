@@ -1,0 +1,49 @@
+---
+/**
+ * 代表記事が 1 件も解決できない場合のトップページ。
+ *
+ * Notion 側で対象記事を下書きへ戻した・Slug を変えた、という状況がこれにあたる。
+ * 「初めての方へ」の見出しと枠だけが残るのを防ぎつつ、主見出し・紹介文と
+ * 既存の記事一覧は壊れずに残ることを、出力として確かめる。
+ */
+import BaseHead from '../../../../src/components/BaseHead.astro';
+import FeaturedPosts from '../../../../src/components/FeaturedPosts.astro';
+import HomeIntro from '../../../../src/components/HomeIntro.astro';
+import { HOME_META_DESCRIPTION, HOME_PAGE_TITLE } from '../../../../src/consts';
+import { resolveFeaturedPosts, type FeaturedPostSource } from '../../../../src/lib/featured-posts';
+
+export const prerender = true;
+
+const posts: FeaturedPostSource[] = [
+  {
+    slug: 'fixture-philosophy',
+    title: 'AIと哲学01；fixture の哲学記事',
+    titlePrefix: 'AIと哲学01',
+    date: '2025-12-10',
+  },
+];
+
+const featured = resolveFeaturedPosts(posts, [
+  { slug: 'fixture-gone-1', summary: '公開一覧に無い記事。' },
+  { slug: 'fixture-gone-2', summary: '公開一覧に無い記事。' },
+]);
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <BaseHead title={HOME_PAGE_TITLE} description={HOME_META_DESCRIPTION} />
+  </head>
+  <body>
+    <main>
+      <HomeIntro />
+      <FeaturedPosts posts={featured.posts} />
+      <section>
+        <h2>シリーズ別</h2>
+        <ul class="archive-list">
+          <li><a href="/posts/fixture-philosophy">AIと哲学01；fixture の哲学記事</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
