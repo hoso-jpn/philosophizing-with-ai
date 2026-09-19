@@ -49,9 +49,11 @@ describe('migration allowlist', () => {
     assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], [
       'allrounder-or-master-gxe-selection',
       'determinism-free-will-ai',
+      'ai-hard-problem-functionalism',
     ]);
     assert.equal(usesPageBodySource('allrounder-or-master-gxe-selection'), true);
     assert.equal(usesPageBodySource('determinism-free-will-ai'), true);
+    assert.equal(usesPageBodySource('ai-hard-problem-functionalism'), true);
     assert.equal(usesPageBodySource('rtx-5090'), false);
   });
 });
@@ -370,7 +372,7 @@ describe('ページ本文の不変条件が暫定 guard を置き換えている
 });
 
 describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを見つける', () => {
-  const published = ['determinism-free-will-ai', 'ai-stats-03', 'scent-of-rain'];
+  const published = ['determinism-free-will-ai', 'ai-hard-problem-functionalism', 'ai-stats-03', 'scent-of-rain'];
 
   it('allowlist が空なら何も報告しない', () => {
     assert.deepEqual(findUnknownMigratedSlugs(published, []), []);
@@ -418,10 +420,11 @@ describe('findUnknownMigratedSlugs: allowlist の綴り違い・取り残しを�
 });
 
 describe('Issue #5 後も #4 の安全契約が効いている', () => {
-  it('migration allowlist は検証済みの2件だけ', () => {
+  it('migration allowlist は移行対象の3件だけ', () => {
     assert.deepEqual([...PAGE_BODY_MIGRATED_SLUGS], [
       'allrounder-or-master-gxe-selection',
       'determinism-free-will-ai',
+      'ai-hard-problem-functionalism',
     ]);
   });
 
