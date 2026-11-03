@@ -136,7 +136,8 @@ export function markdown(items: RichTextItem[]): string {
     .map((item) => {
       const a = item.annotations;
       const decorated = ANNOTATION_KEYS.some((key) => a?.[key] === true);
-      if (!decorated && !item.href) return item.plain_text;
+      const href = isBareDomainAutolink(item) ? null : item.href;
+      if (!decorated && !href) return item.plain_text;
 
       // code の中身は marked がエスケープするので、ここでは触らない
       let text = a?.code ? codeSpan(item.plain_text) : escapeHtml(item.plain_text);
@@ -145,11 +146,30 @@ export function markdown(items: RichTextItem[]): string {
       if (a?.italic) text = `<em>${text}</em>`;
       if (a?.strikethrough) text = `<del>${text}</del>`;
       if (a?.underline) text = `<u>${text}</u>`;
-      if (item.href) text = `<a href="${escapeAttribute(item.href)}">${text}</a>`;
+      if (href) text = `<a href="${escapeAttribute(href)}">${text}</a>`;
 
       return text;
     })
     .join('');
+}
+
+/**
+ * Notion が「ドメインに見える文字列」に勝手に付けたリンクか。
+ *
+ * Content に `prereg.md` や `bench.py` と書くと、Notion は .md（モルドバ）や
+ * .py（パラグアイ）をドメインとみなし、`http://prereg.md` へのリンクを付ける
+ * （API 経由で保存しても起きる。2026-11 に AIと実装02 で 6 箇所）。
+ * 文字の前の `\` によるエスケープでは防げなかった。
+ *
+ * legacy Content のリンクは本文中の `<a href>` として書くので、
+ * Notion の href は自動で付いたものしかない。
+ * 「ラベルが http(s):// を外した href そのもの」の場合だけリンクを外し、
+ * ほかのリンクはそのまま残す。
+ */
+function isBareDomainAutolink(item: RichTextItem): boolean {
+  const { href, plain_text: text } = item;
+  if (!href || !text) return false;
+  return href === `http://${text}` || href === `https://${text}`;
 }
 
 function extractTags(prop: z.infer<typeof tagsProp>): string[] {

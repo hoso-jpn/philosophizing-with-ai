@@ -230,6 +230,30 @@ describe('markdown: Notion の装飾を marked へ渡せる形に戻す', () => 
     assert.equal(markdown([frag('L', ann(), '')]), 'L');
   });
 
+  it('Notion がファイル名に自動で付けたリンク（http://prereg.md など）は外す', () => {
+    // .md や .py をドメインとみなして Notion が付ける。AIと実装02 で 6 箇所あった
+    assert.equal(markdown([frag('prereg.md', ann(), 'http://prereg.md')]), 'prereg.md');
+    assert.equal(markdown([frag('bench.py', ann(), 'https://bench.py')]), 'bench.py');
+    // 前後の文字列とつながったまま元に戻る
+    const md = markdown([frag('<code>bench/llm_engine_'), frag('bench.py', ann(), 'http://bench.py'), frag('</code>')]);
+    assert.equal(md, '<code>bench/llm_engine_bench.py</code>');
+  });
+
+  it('自動リンクを外しても、ほかの装飾は残す', () => {
+    assert.equal(markdown([frag('plan.md', ann({ bold: true }), 'http://plan.md')]), '<strong>plan.md</strong>');
+  });
+
+  it('ラベルと URL が違うリンクは残す', () => {
+    assert.equal(
+      markdown([frag('prereg.md', ann(), 'https://github.com/x/prereg.md')]),
+      '<a href="https://github.com/x/prereg.md">prereg.md</a>',
+    );
+    assert.equal(
+      markdown([frag('example.com', ann(), 'http://example.com/path')]),
+      '<a href="http://example.com/path">example.com</a>',
+    );
+  });
+
   it('装飾フラグメントの HTML 特殊文字をエスケープする', () => {
     assert.equal(markdown([frag('a<b>&c', ann({ bold: true }))]), '<strong>a&lt;b&gt;&amp;c</strong>');
     assert.equal(markdown([frag('L', ann(), 'https://e.com/?a="x"')]).includes('&quot;'), true);
